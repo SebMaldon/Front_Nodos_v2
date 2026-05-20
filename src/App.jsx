@@ -1,107 +1,53 @@
-import { useState, useEffect, useContext } from 'react'; // Importar las funciones useState y useEffect
-import axios from 'axios'; // Importar axios para realizar peticiones HTTP
-import { BrowserRouter as Router, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom'; // Importar React Router
-import './App.css'; // Importar el archivo de estilos
-import NodeForm from './components/NodeFrom'; // Importar el componente NodeForm
-import NodeTable from './components/NodeTable'; // Importar el componente NodeTable
-import TablaRegistros from './pages/tablaRegistros'; // Importar la página con la tabla de registros
-import NodosSustitucion from './pages/NodosSustitucion'; // Importar la página con la tabla de los nodos candidatos a sustitución
+import { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import NodeForm from './components/NodeFrom';
+import NodeTable from './components/NodeTable';
+import TablaRegistros from './pages/tablaRegistros';
+import NodosSustitucion from './pages/NodosSustitucion';
 import PantallaInicio from './pages/inicio';
 import Login from './pages/Login';
-import { AuthProvider, AuthContext } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import GestionUnidades from './pages/GestionUnidades';
 
-// Navigation fuera de App para evitar re-renders y poder cerrar el menú correctamente
-function Navigation({ mobileMenuOpen, setMobileMenuOpen }) {
-    const location = useLocation();
-    const navigate = useNavigate();
-    const { user, logoutUser } = useContext(AuthContext);
-    const closeMenu = () => setMobileMenuOpen(false);
+import { AppProvider, useApp } from './context/AppContext';
+import Sidebar from './components/Sidebar';
+import Topbar from './components/Topbar';
 
-    const handleLogout = () => {
-        logoutUser();
-        navigate('/login');
-    };
-
+// ─── Layout principal ─────────────────────────────────────────────────────────
+function AppLayout({ children }) {
+    const { sidebarOpen, setSidebarOpen } = useApp();
     return (
-        <>
-            {/* Overlay invisible: cierra el menú al tocar fuera de él */}
-            {mobileMenuOpen && (
+        <div className="flex h-screen overflow-hidden bg-gray-50">
+            {/* Mobile overlay */}
+            {sidebarOpen && (
                 <div
-                    onClick={closeMenu}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        zIndex: 998,
-                    }}
+                    className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+                    onClick={() => setSidebarOpen(false)}
                 />
             )}
-
-            <header className="imss-header" style={{ position: 'relative', zIndex: 999 }}>
-                <div className="header-container">
-                    <div className="header-logo">
-                        <img src="/IMSS_Logosímbolo_Blanco.png" alt="Logo IMSS" />
-                        <span>Sistema de Gestión de Nodos</span>
-                    </div>
-
-                    <div
-                        className={`mobile-menu-toggle ${mobileMenuOpen ? 'open' : ''}`}
-                        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                    >
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-
-                    <nav className={`header-nav ${mobileMenuOpen ? 'open' : ''}`}>
-                        <ul className="nav-links">
-                            {user && (
-                                <>
-                                    <li className={location.pathname === '/' ? 'active' : ''}>
-                                        <NavLink to="/" onClick={closeMenu}>
-                                            <i className="fas fa-home"></i> Inicio
-                                        </NavLink>
-                                    </li>
-                                    <li className={location.pathname.includes('/catalogo-nodos') ? 'active' : ''}>
-                                        <NavLink to="/catalogo-nodos" onClick={closeMenu}>
-                                            <i className="fas fa-list"></i> Catálogo
-                                        </NavLink>
-                                    </li>
-                                    {user.role === 'administrador' && (
-                                        <li className={location.pathname.includes('/gestion-nodos') ? 'active' : ''}>
-                                            <NavLink to="/gestion-nodos" onClick={closeMenu}>
-                                                <i className="fas fa-cog"></i> Gestión
-                                            </NavLink>
-                                        </li>
-                                    )}
-                                    <li className={location.pathname.includes('/catalogo-prioritarios') ? 'active' : ''}>
-                                        <NavLink to="/catalogo-prioritarios" onClick={closeMenu}>
-                                            <i className="fas fa-exclamation-triangle"></i> Prioritarios
-                                        </NavLink>
-                                    </li>
-                                    <li>
-                                        <button onClick={handleLogout} className="logout-button" style={{ background: 'transparent', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1rem', padding: '10px 15px' }}>
-                                            <i className="fas fa-sign-out-alt"></i> Salir
-                                        </button>
-                                    </li>
-                                </>
-                            )}
-                        </ul>
-                    </nav>
-                </div>
-            </header>
-        </>
+            {/* Sidebar */}
+            <div className={`
+                fixed inset-y-0 left-0 z-40 lg:static lg:z-auto
+                transform transition-transform duration-300 ease-in-out
+                ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+                lg:translate-x-0 lg:flex-shrink-0
+            `}>
+                <Sidebar />
+            </div>
+            {/* Main content */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+                <Topbar />
+                <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+                    {children}
+                </main>
+            </div>
+        </div>
     );
 }
 
 function App() {
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [refreshKey, setRefreshKey] = useState(0); // Clave para forzar re-fetch en NodeTable
-
-    // Cargar los nodos al iniciar y cuando la paginación cambie
-    useEffect(() => {
-        // Data fetching is now handled inside NodeTable
-    }, []);
 
     // Función para agregar un nuevo nodo
     const handleAddNodo = async () => {
@@ -113,76 +59,74 @@ function App() {
     };
 
     return (
-        <AuthProvider>
-            <Router>
-                <div className="App">
-                    <Navigation mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
-
-                    <main className="app-content">
-                        <Routes>
-                            <Route path="/login" element={<Login />} />
-                            <Route
-                                path="/gestion-nodos"
-                                element={
-                                    <ProtectedRoute requiredRole="administrador">
-                                        <div className="page-container">
-                                            <h1 className="page-title">Gestión y Registro de Nodos</h1>
-                                            <div className="content-container">
-                                                <div className="form-container">
-                                                    <NodeForm onAddNodo={handleAddNodo} />
-                                                </div>
-                                                <div className="table-container">
-                                                    <NodeTable
-                                                        refreshKey={refreshKey}
-                                                    />
-                                                </div>
-                                            </div>
+        <Router>
+            <AuthProvider>
+                <AppProvider>
+                    <Routes>
+                        <Route path="/login" element={<Login />} />
+                        <Route
+                            path="/gestion-nodos"
+                            element={
+                                <ProtectedRoute requiredRole="administrador">
+                                    <AppLayout>
+                                         <div className="w-full fade-in">
+                                             <NodeTable refreshKey={refreshKey} />
+                                         </div>
+                                    </AppLayout>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/gestion-unidades"
+                            element={
+                                <ProtectedRoute requiredRole="administrador">
+                                    <AppLayout>
+                                         <div className="w-full fade-in">
+                                             <GestionUnidades />
+                                         </div>
+                                     </AppLayout>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/catalogo-prioritarios"
+                            element={
+                                <ProtectedRoute>
+                                    <AppLayout>
+                                        <div className="w-full fade-in">
+                                            <NodosSustitucion />
                                         </div>
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="/catalogo-prioritarios"
-                                element={
-                                    <ProtectedRoute>
-                                        <div className="page-container">
-                                            <h1 className="page-title">Nodos Prioritarios</h1>
-                                            <div className="table-container">
-                                                <NodosSustitucion />
-                                            </div>
+                                    </AppLayout>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/catalogo-nodos"
+                            element={
+                                <ProtectedRoute>
+                                    <AppLayout>
+                                        <div className="w-full fade-in">
+                                            <TablaRegistros />
                                         </div>
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="/catalogo-nodos"
-                                element={
-                                    <ProtectedRoute>
-                                        <div className="page-container">
-                                            <h1 className="page-title">Catálogo de Nodos</h1>
-                                            <div className="table-container">
-                                                <TablaRegistros />
-                                            </div>
-                                        </div>
-                                    </ProtectedRoute>
-                                }
-                            />
-                            <Route
-                                path="/"
-                                element={
-                                    <ProtectedRoute>
-                                        <div className="page-container">
-                                            <PantallaInicio />
-                                        </div>
-                                    </ProtectedRoute>
-                                }
-                            />
-                        </Routes>
-                    </main>
-                </div>
-            </Router>
-        </AuthProvider>
+                                    </AppLayout>
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/"
+                            element={
+                                <ProtectedRoute>
+                                    <AppLayout>
+                                        <PantallaInicio />
+                                    </AppLayout>
+                                </ProtectedRoute>
+                            }
+                        />
+                    </Routes>
+                </AppProvider>
+            </AuthProvider>
+        </Router>
     );
 }
 
-export default App; // Exportar el componente App
+export default App;

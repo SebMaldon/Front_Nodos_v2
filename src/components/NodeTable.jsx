@@ -1,15 +1,35 @@
 import { useState, useEffect, useContext } from 'react';
-import { Button, Tooltip, TextField, ListItemText, ListItem, List, Typography, TablePagination } from '@mui/material';
+// MUI imports removed
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = 'http://localhost:5090';
+
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import NodeForm from './NodeFrom';
+import NodeDetailsModal from './NodeDetailsModal';
+import ConfirmDeleteModal from './ConfirmDeleteModal';
+import ImageModal from './ImageModal';
+import EditNodeModal from './EditNodeModal';
+import NodeMaterialsModal from './NodeMaterialsModal';
+import NodeAttentionModal from './NodeAttentionModal';
+import ObservationModal from './ObservationModal';
+
 
 
 const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
     const { user } = useContext(AuthContext); // Obtenemos el usuario activo
     const [pageNode, setPageNode] = useState(0);
     const [rowsPerPageNode, setRowsPerPageNode] = useState(10);
+    const [showRegisterModal, setShowRegisterModal] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const [selectedRowId, setSelectedRowId] = useState(null); // Estado para la fila seleccionada
     const [hoveredRow, setHoveredRow] = useState(null);
     const [showMaterialesModal, setShowMaterialesModal] = useState(false); // Estado para mostrar el modal de materiales
@@ -56,6 +76,8 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         rowsPerPage: 5,
         searchTerm: ''
     });
+    const [searchUnidadTable, setSearchUnidadTable] = useState("");
+    const unidadesFiltradasTable = unidades.filter(u => u.nombre.toLowerCase().includes(searchUnidadTable.toLowerCase()));
 
 
     // Filtrar y paginar materiales
@@ -98,6 +120,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
     // Función para hacer la nueva consulta GET y actualizar el estado
     const fetchNewNodos = async () => {
+        setIsLoading(true);
         try {
             const params = { ...filtros }; // Copiar los filtros actuales
 
@@ -146,6 +169,8 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
             setTotalAtendidos(response.data.totalAtendido);// Almacenar el total de nodos atendidos en el estado
         } catch (error) {
             console.error('Error al obtener los nuevos nodos:', error);
+        } finally {
+            setIsLoading(false);
         }
     };
     const fetchUOtrosNodos = async () => {
@@ -530,7 +555,17 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         }
     };
 
-    const datosAMostrar = filteredNodos; // Mostrar los nodos cargados localmente
+    const datosAMostrar = Array.isArray(filteredNodos) ? filteredNodos.filter(n => {
+        if (!searchTerm) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+            (n.Ubicacion && n.Ubicacion.toLowerCase().includes(term)) ||
+            (n.Unidad && n.Unidad.toLowerCase().includes(term)) ||
+            (n.Puerto && String(n.Puerto).toLowerCase().includes(term)) ||
+            (n.IpSwitch && n.IpSwitch.toLowerCase().includes(term)) ||
+            (n.Observaciones && n.Observaciones.toLowerCase().includes(term))
+        );
+    }) : [];
 
     // Eliminado filtrosEstanVacios duplicado
 
@@ -652,1418 +687,617 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         return isNaN(floatValue) ? 0 : Math.max(0, floatValue);
     };
 
-    return ( // Renderiza la tabla con los nodos
-        <div>
-            <h2>Nodos Registrados</h2>
-
-            {/* Filtros */}
-            <div className="filtros">
-                <label>
-                    Filtros:
-                    <select
-                        style={{ marginLeft: '5px' }}
-                        name="tipoAtencion" // Nombre del campo
-                        value={filtros.tipoAtencion} // Valor del campo
-                        onChange={handleFiltroChange} // Manejar cambios en el campo
-                    >
-                        <option value="">Ninguno</option>
-                        <option value="uno">Recibieron atención</option>
-                        <option value="mantenimiento">Requieren mantenimiento</option>
-                        <option value="otraAtencion">Requieren otro tipo de atención</option>
-                        <option value="ambos">Con mantenimiento y otro tipo de atención</option>
-                        <option value="ninguno">Sin mantenimiento y otro tipo de atención</option>
-                    </select>
-                </label>
-                <label style={{ marginLeft: '10px' }}>
-                    Unidad:
-                    <select
-                        style={{ marginLeft: '5px' }}
-                        name="unidad"
-                        value={filtros.unidad}
-                        onChange={handleFiltroChange}
-                        disabled={false}
-                    >
-                        {/* Opción 'Todas' visible para todos (el backend ya filtra por zona) */}
-                        <option value="">Todas</option>
-                        {unidades.map((unidad) => (
-                            <option key={unidad.ref} value={unidad.ref}>
-                                {unidad.nombre}
-                            </option>
-                        ))}
-                    </select>
-                </label>
-                <Tooltip title="Refrescar datos">
-                    <Button
-                        onClick={fetchNewNodos}
-                        variant="contained"
-                        size="small"
-                        style={{ marginLeft: '10px', height: '30px', backgroundColor: '#007e47' }}
-                    >
-                        <i className="fas fa-sync-alt"></i>
-                    </Button>
-                </Tooltip>
-            </div>
-
-            {/* Botones de Acción Globales */}
-            <div className="acciones-globales" style={{ marginTop: '15px', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                <Button
-                    onClick={() => {
-                        const node = datosAMostrar.find(n => n.Id === selectedRowId);
-                        if (node) handleDetailsClick(node);
-                    }}
-                    variant='contained'
-                    size='small'
-                    disabled={!selectedRowId}
-                    color="primary"
-                >
-                    <i className="fas fa-eye" style={{ marginRight: '5px' }}></i> Detalles
-                </Button>
-                {user?.role === 'administrador' && (
-                    <>
-                        <Button
-                            onClick={() => {
-                                const node = datosAMostrar.find(n => n.Id === selectedRowId);
-                                if (node) handleEditClick(node);
-                            }}
-                            variant='contained'
-                            size='small'
-                            disabled={!selectedRowId}
-                            color="warning"
-                            style={{ backgroundColor: !selectedRowId ? undefined : '#ed6c02', color: 'white' }}
-                        >
-                            <i className="fas fa-edit" style={{ marginRight: '5px' }}></i> Editar
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                const node = datosAMostrar.find(n => n.Id === selectedRowId);
-                                if (node) handleDeleteClick(node);
-                            }}
-                            variant='contained'
-                            size='small'
-                            disabled={!selectedRowId}
-                            color="error"
-                        >
-                            <i className="fas fa-trash" style={{ marginRight: '5px' }}></i> Eliminar
-                        </Button>
-                    </>
-                )}
-            </div>
-
-            {/* Etiqueta con el total de registros */}
-            <div style={{ marginTop: '10px', fontWeight: 'bold', display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-                <label>Total de registros: {totalRegistros}</label>
-                <label> Nodos faltantes:{totalFaltantes || ' 0'} </label>
-                <label> Nodos atendidos:{totalAtendidos || ' 0'} </label>
-            </div>
-
-            <div style={{ overflowX: 'auto', width: '100%' }}>
-                <table> {/* Tabla para mostrar los nodos */}
-                    <thead>
-                        <tr> {/* Encabezados de la tabla */}
-                            <th>Ubicación</th>
-                            <th>Unidad</th>
-                            <th>Puerto</th>
-                            <th>IP del Switch</th>
-                            <th>Observaciones</th>
-                            {/* Column removed: Acciones */}
-                            <th>Faltantes</th>
-                            <th>M</th>
-                            <th>OA</th>
-                        </tr>
-                    </thead>
-                    <tbody> {/* Cuerpo de la tabla */}
-                        {/* Si filteredNodos tiene datos, usa esos, de lo contrario usa nodos */}
-                        {datosAMostrar.map((nodoData, index) => {
-                            // Determinar el color basado en si tiene imágenes y si la fila es par/impar
-                            const isEven = index % 2 === 0;
-
-                            // Colores base (solo para nodos sin imágenes)
-                            const baseColor = nodoData.TieneImagenes ? '' :
-                                (isEven ? '#fb99a8' : '#f76d82');
-
-                            // Color hover (solo para nodos sin imágenes)
-                            const hoverColor = nodoData.TieneImagenes ? '' :
-                                (isEven ? '#ffdade' : '#ffc0cb');
-
-                            // Determinar el color actual
-                            const currentColor = (hoveredRow === index && !nodoData.TieneImagenes)
-                                ? hoverColor
-                                : baseColor;
-
-
-                            return (
-                                <tr
-                                    key={index}
-                                    onClick={() => setSelectedRowId(nodoData.Id)}
-                                    style={{
-                                        backgroundColor: selectedRowId === nodoData.Id ? '#e3f2fd' : currentColor,
-                                        cursor: 'pointer',
-                                        border: selectedRowId === nodoData.Id ? '2px solid #1976d2' : 'none'
-                                    }}
-                                    // Eventos para manejar el coloreado de la fila al sobreponer el puntero
-                                    onMouseEnter={() => setHoveredRow(index)}
-                                    onMouseLeave={() => setHoveredRow(null)}
+    return (
+        <div className="space-y-6 w-full">
+            {/* Header / Título estilo Screenshot */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+                <div>
+                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gestión y Registro de Nodos</h1>
+                    <p className="text-sm text-slate-500 mt-1">Padrón de nodos y enlaces institucionales — Delegación Nayarit</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button 
+                                    onClick={fetchNewNodos} 
+                                    variant="outline" 
+                                    className="h-10 w-10 rounded-full border border-slate-200 p-0 text-slate-500 hover:bg-slate-50 hover:text-slate-700 flex items-center justify-center bg-white shadow-xs"
                                 >
-                                    <td>{nodoData.Ubicacion}</td> {/* Muestra la ubicación del nodo */}
-                                    <td>{nodoData.Unidad}</td> {/* Muestra la unidad del nodo */}
-                                    <td style={{ textAlign: 'center' }}>{nodoData.Puerto}</td> {/* Muestra el puerto */}
-                                    <td style={{ textAlign: 'center' }}>{nodoData.IpSwitch}</td> {/* Muestra la IP del switch */}
-                                    <td>{nodoData.Observaciones}</td> {/* Muestra el año de instalación */}
-                                    {/* Column cell removed: Acciones */}
-                                    <td style={{ textAlign: 'center' }} >{nodoData.Nodos_faltantes ? nodoData.Nodos_faltantes : '0'}</td> {/* Muestra los nodos faltantes */}
-                                    {/* Muestra el estado de atención del nodo con imagenes*/}
-                                    <td onClick={() => handleAtencionClick(nodoData)}
-                                        style={{ cursor: 'pointer', textAlign: 'center' }}>
-                                        {nodoData.Atencion ? '⚠️' : (nodoData.Atendido ? '✅' : '')} {/* Prioriza advertencia, si no, muestra atendido */}
-                                    </td>
-                                    {/* Muestra el estado de atención del nodo con imagenes*/}
-                                    <td onClick={() => handleOtherAtencionClick(nodoData)}
-                                        style={{ cursor: 'pointer', textAlign: 'center' }}>
-                                        {nodoData.OtraAtencion ? '🔴' : (nodoData.OtroAtendido ? '🟢' : '')} {/* Prioriza atención roja, si no, muestra verde */}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                                    <i className="fas fa-sync-alt"></i>
+                                </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Refrescar datos</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+
+                    {user?.role === 'administrador' && (
+                        <Button 
+                            onClick={() => setShowRegisterModal(true)}
+                            className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
+                        >
+                            <i className="fas fa-plus"></i> Registrar Nodo
+                        </Button>
+                    )}
+                </div>
             </div>
 
-            <TablePagination
-                component="div"
-                count={totalRegistros}
-                page={pageNode}
-                onPageChange={(event, newPage) => setPageNode(newPage)}
-                rowsPerPage={rowsPerPageNode}
-                rowsPerPageOptions={[5, 10, 25, 50]}
-                onRowsPerPageChange={(event) => {
-                    setRowsPerPageNode(parseInt(event.target.value, 10));
-                    setPageNode(0);
-                }}
-                labelRowsPerPage="Nodos por página"
+            {/* Pestañas de estatus rápidas */}
+            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-fit border border-slate-200/50">
+                <button
+                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: '' } })}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
+                        !filtros.tipoAtencion
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    Todos los Nodos 
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                        !filtros.tipoAtencion ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                        {totalRegistros}
+                    </span>
+                </button>
+                <button
+                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: 'mantenimiento' } })}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
+                        filtros.tipoAtencion === 'mantenimiento'
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    Requieren Mantenimiento
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                        filtros.tipoAtencion === 'mantenimiento' ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                        {totalFaltantes}
+                    </span>
+                </button>
+                <button
+                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: 'uno' } })}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
+                        filtros.tipoAtencion === 'uno'
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
+                            : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                >
+                    Mantenimiento Resuelto
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                        filtros.tipoAtencion === 'uno' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-600'
+                    }`}>
+                        {totalAtendidos}
+                    </span>
+                </button>
+            </div>
+
+            {/* Contenedor Principal (Tarjeta estilo Screenshot) */}
+            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+                {/* Buscador y Filtros */}
+                <div className="flex flex-col md:flex-row gap-3 items-center">
+                    <div className="relative w-full md:flex-1">
+                        <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <Input
+                            type="text"
+                            placeholder="Buscar por ubicación, ip switch, puerto o resguardo..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="pl-9 h-10 w-full bg-white border border-slate-200 rounded-lg shadow-2xs text-sm focus-visible:ring-emerald-600"
+                        />
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
+                        <Select 
+                            value={filtros.tipoAtencion || "all"} 
+                            onValueChange={(val) => handleFiltroChange({target: {name: 'tipoAtencion', value: val === 'all' ? '' : val}})}
+                        >
+                            <SelectTrigger className="w-full sm:w-[180px] h-10 bg-white border border-slate-200 text-sm">
+                                <SelectValue placeholder="Todos los estatus">
+                                    {filtros.tipoAtencion ? (
+                                        filtros.tipoAtencion === 'uno' ? 'Mantenimiento Resuelto' :
+                                        filtros.tipoAtencion === 'mantenimiento' ? 'Requieren Mantenimiento' :
+                                        filtros.tipoAtencion === 'otraAtencion' ? 'Requieren Otra Atención' :
+                                        filtros.tipoAtencion === 'ambos' ? 'Ambos tipos' :
+                                        filtros.tipoAtencion === 'ninguno' ? 'Sin ningún reporte' :
+                                        'Todos los estatus'
+                                    ) : 'Todos los estatus'}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todos los estatus</SelectItem>
+                                <SelectItem value="uno">Mantenimiento Resuelto</SelectItem>
+                                <SelectItem value="mantenimiento">Requieren Mantenimiento</SelectItem>
+                                <SelectItem value="otraAtencion">Requieren Otra Atención</SelectItem>
+                                <SelectItem value="ambos">Ambos tipos</SelectItem>
+                                <SelectItem value="ninguno">Sin ningún reporte</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Select 
+                            value={filtros.unidad || "all"} 
+                            onValueChange={(val) => handleFiltroChange({target: {name: 'unidad', value: val === 'all' ? '' : val}})}
+                        >
+                            <SelectTrigger className="w-full sm:w-[180px] h-10 bg-white border border-slate-200 text-sm">
+                                <SelectValue placeholder="Todas las Unidades">
+                                    {filtros.unidad ? (unidades.find(u => u.ref === filtros.unidad)?.nombre || filtros.unidad) : 'Todas las Unidades'}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <div className="p-2 sticky top-0 bg-white z-10 border-b border-slate-100">
+                                    <Input
+                                        placeholder="Buscar unidad..."
+                                        value={searchUnidadTable}
+                                        onChange={(e) => setSearchUnidadTable(e.target.value)}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        className="h-8 text-xs bg-slate-50 focus-visible:ring-emerald-500"
+                                    />
+                                </div>
+                                <SelectItem value="all">Todas las Unidades</SelectItem>
+                                {unidadesFiltradasTable.map(u => (
+                                    <SelectItem key={u.ref} value={u.ref}>
+                                        {u.nombre}
+                                    </SelectItem>
+                                ))}
+                                {unidadesFiltradasTable.length === 0 && (
+                                    <div className="py-4 text-center text-xs text-slate-500">No se encontraron unidades</div>
+                                )}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="text-xs text-slate-400 font-medium">
+                    {datosAMostrar.length} registros encontrados
+                </div>
+
+                {/* Tabla de Nodos */}
+                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                    <Table>
+                        <TableHeader>
+                            <TableRow className="bg-slate-50 hover:bg-slate-50">
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">PUERTO / SWITCH</TableHead>
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">UBICACIÓN / UNIDAD</TableHead>
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">OBSERVACIONES</TableHead>
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider text-center">FALTANTES</TableHead>
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">ESTATUS / ATENCIÓN</TableHead>
+                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider text-right pr-6">ACCIONES</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {datosAMostrar.map((nodoData, index) => {
+                                const isSelected = selectedRowId === nodoData.Id;
+                                const hasImages = nodoData.TieneImagenes;
+                                
+                                return (
+                                    <TableRow 
+                                        key={nodoData.Id}
+                                        onClick={() => setSelectedRowId(nodoData.Id)}
+                                        className={`cursor-pointer transition-colors border-b border-slate-100 ${
+                                            isSelected 
+                                                ? 'bg-emerald-50/40 hover:bg-emerald-50' 
+                                                : !hasImages 
+                                                    ? 'bg-red-50/20 hover:bg-red-50/40' 
+                                                    : 'hover:bg-slate-50/80'
+                                        }`}
+                                    >
+                                        <TableCell>
+                                            <div className="space-y-1">
+                                                <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono font-medium bg-slate-100 text-slate-800 rounded border border-slate-200">
+                                                    P: {nodoData.Puerto}
+                                                </span>
+                                                <div className="text-xs text-slate-400 font-mono">
+                                                    IP: {nodoData.IpSwitch}
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="space-y-0.5">
+                                                <div className="font-semibold text-slate-900 text-sm">{nodoData.Ubicacion}</div>
+                                                <div className="text-xs text-slate-500">{nodoData.Unidad}</div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="max-w-[220px] truncate text-slate-600 text-sm">
+                                            {nodoData.Observaciones || 'Sin observaciones'}
+                                        </TableCell>
+                                        <TableCell className="text-center font-medium text-slate-700 text-sm">
+                                            {nodoData.Nodos_faltantes || '0'}
+                                        </TableCell>
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1.5 justify-center">
+                                                {nodoData.Atencion ? (
+                                                    <Badge 
+                                                        variant="destructive" 
+                                                        className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
+                                                        onClick={(e) => { e.stopPropagation(); handleAtencionClick(nodoData); }}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5 animate-pulse"></span>
+                                                        Req. Mantenimiento
+                                                    </Badge>
+                                                ) : nodoData.Atendido ? (
+                                                    <Badge 
+                                                        variant="outline" 
+                                                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
+                                                        onClick={(e) => { e.stopPropagation(); handleAtencionClick(nodoData); }}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>
+                                                        Manto. Resuelto
+                                                    </Badge>
+                                                ) : null}
+
+                                                {nodoData.OtraAtencion ? (
+                                                    <Badge 
+                                                        variant="destructive" 
+                                                        className="bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
+                                                        onClick={(e) => { e.stopPropagation(); handleOtherAtencionClick(nodoData); }}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mr-1.5 animate-pulse"></span>
+                                                        Req. Otra Atención
+                                                    </Badge>
+                                                ) : nodoData.OtroAtendido ? (
+                                                    <Badge 
+                                                        variant="outline" 
+                                                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
+                                                        onClick={(e) => { e.stopPropagation(); handleOtherAtencionClick(nodoData); }}
+                                                    >
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>
+                                                        Atención Resuelta
+                                                    </Badge>
+                                                ) : null}
+                                                
+                                                {!nodoData.Atencion && !nodoData.Atendido && !nodoData.OtraAtencion && !nodoData.OtroAtendido && (
+                                                    <Badge 
+                                                        variant="outline" 
+                                                        className="bg-slate-50 text-slate-600 border-slate-200 text-xs px-2.5 py-1 rounded-full font-medium w-fit"
+                                                    >
+                                                        Activo / Sin Reporte
+                                                    </Badge>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="text-right pr-6">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                <TooltipProvider>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <Button 
+                                                                size="icon" 
+                                                                variant="ghost" 
+                                                                onClick={(e) => { e.stopPropagation(); handleDetailsClick(nodoData); }}
+                                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            >
+                                                                <i className="fas fa-eye text-sm"></i>
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Ver Detalles</TooltipContent>
+                                                    </Tooltip>
+                                                </TooltipProvider>
+
+                                                {user?.role === 'administrador' && (
+                                                    <>
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button 
+                                                                        size="icon" 
+                                                                        variant="ghost" 
+                                                                        onClick={(e) => { e.stopPropagation(); handleEditClick(nodoData); }}
+                                                                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
+                                                                    >
+                                                                        <i className="fas fa-edit text-sm"></i>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>Editar Nodo</TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button 
+                                                                        size="icon" 
+                                                                        variant="ghost" 
+                                                                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(nodoData); }}
+                                                                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                                                                    >
+                                                                        <i className="fas fa-trash text-sm"></i>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>Eliminar Nodo</TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })}
+                            {!isLoading && datosAMostrar.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
+                                        No se encontraron nodos registrados que coincidan.
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
+
+                {/* Paginación */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
+                    <div className="text-sm text-slate-500">
+                        Página {pageNode + 1} de {Math.max(1, Math.ceil(totalRegistros / rowsPerPageNode))}
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center space-x-2">
+                            <span className="text-sm text-slate-500">Nodos por página:</span>
+                            <select 
+                                className="border rounded p-1 text-sm bg-white border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
+                                value={rowsPerPageNode}
+                                onChange={(e) => {
+                                    setRowsPerPageNode(parseInt(e.target.value, 10));
+                                    setPageNode(0);
+                                }}
+                            >
+                                {[5, 10, 25, 50].map(val => (
+                                    <option key={val} value={val}>{val}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        <div className="flex space-x-2">
+                            <Button 
+                                variant="outline" 
+                                size="sm"
+                                disabled={pageNode === 0}
+                                onClick={() => setPageNode(prev => prev - 1)}
+                                className="h-8 shadow-2xs border-slate-200"
+                            >
+                                Anterior
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                size="sm"
+                                disabled={(pageNode + 1) * rowsPerPageNode >= totalRegistros}
+                                onClick={() => setPageNode(prev => prev + 1)}
+                                className="h-8 shadow-2xs border-slate-200"
+                            >
+                                Siguiente
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* MODALS */}
+            <NodeDetailsModal 
+                selectedNodo={selectedNodo} 
+                onClose={handleCloseModal} 
+                handleImageClick={handleImageClick} 
             />
 
-            {/* Modal para quitar la atención del mantenimiento */}
-            {selectedAtencionNodo && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>¿Estás seguro de que este nodo ya no requiere mantenimiento?</h3>
-                        <p><strong>Ubicación:</strong> {selectedAtencionNodo.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                        <p><strong>Unidad:</strong> {selectedAtencionNodo.Unidad}</p> {/* Muestra la unidad del nodo */}
-                        <p><strong>Categoría del Cable:</strong> {selectedAtencionNodo.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                        {/* Muestra la observaciones generales del nodo */}
-                        {!EstaVacio(selectedAtencionNodo.Observaciones) && (
-                            <p><strong>Observaciones generales:</strong> {selectedAtencionNodo.Observaciones}</p>
-                        )}
-                        {/* Tabla con los registros de mantenimiento que sólo se muestra si hay registros en la BD */}
-                        {!EstaVacio(selectedAtencionNodo.mantenimiento) && (
-                            <div style={{ overflowX: 'auto', width: '100%' }}>
-                                <table>
-                                    <thead>
-                                        <th>Fecha de registro</th>
-                                        <th>Observaciones del usuario</th>
-                                    </thead>
-                                    <tbody className='content-table-modal'>
-                                        {selectedAtencionNodo.mantenimiento.map((CamposMantenimiento, index) => ( // Mapea los registros de mantenimiento y los muestra
-                                            <tr key={index}> {/* Clave única para cada fila */}
-                                                <td>{CamposMantenimiento.FechaCambio}</td>
-                                                <td>{CamposMantenimiento.ObservacionesUsuario}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) || (<p style={{ color: 'grey' }}>No hay registros en la tabla</p>)}
-                        <div> {/* Contenedor de las imágenes */}
-                            <br />
-                            <strong>Imágenes con las que se solventaron:</strong>
-                            <br />
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedAtencionNodo?.imagesSolventadas && selectedAtencionNodo.imagesSolventadas.length > 0 ? ( // Muestra las imágenes si hay
-                                    selectedAtencionNodo.imagesSolventadas.map((image, index) => {
-                                        // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                        const fileName = image.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                        const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
+            <ConfirmDeleteModal 
+                nodoToDelete={nodoToDelete} 
+                onClose={handleCloseModal} 
+                onConfirm={handleConfirmDelete} 
+            />
 
-                                        // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                        const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                            ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                day: '2-digit',
-                                                month: '2-digit',
-                                                year: 'numeric',
-                                            })
-                                            : 'Fecha no disponible';
-                                        return ( // Mapea las imágenes y las muestra
-                                            <div key={index}>
-                                                <div>
-                                                    {formattedDate}
-                                                </div>
-                                                <img
-                                                    key={index} // Clave única para cada imagen
-                                                    src={`${API_URL}` + image.ImagenURL}  // URL de la imagen
-                                                    alt={`Imagen ${index + 1}`} // Texto alternativo
-                                                    width="200" // Ancho de la imagen
-                                                    style={{ margin: '5px', cursor: 'pointer' }} // Estilos
-                                                    onClick={() => handleImageClick(image.ImagenURL)} // Mostrar la imagen en grande
-                                                />
-                                            </div>
-                                        );
-                                    })
-                                ) : ( // Si no hay imágenes
-                                    <p>No hay imágenes disponibles.</p>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <Button onClick={handleParcialAtencion} variant="contained">Solventado parcialmente</Button> {/* Botón para confirmar la eliminación */}
-                            <Button onClick={handleDeleteAtencion} className='delete-button'>Ya no requiere mantenimiento</Button> {/* Botón para confirmar la eliminación */}
-                            <Button onClick={handleCloseModal} variant="outlined">Cancelar</Button> {/* Botón para cancelar la eliminación */}
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ImageModal 
+                selectedImage={selectedImage} 
+                onClose={() => setSelectedImage(null)} 
+            />
 
-            {/* Modal para mostrar historial de mantenimientos para un nodo que no requiere mantenimiento */}
-            {selectedSinAtencionNodo && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Este nodo no requiere mantenimiento</h3>
-                        <p><strong>Ubicación:</strong> {selectedSinAtencionNodo.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                        <p><strong>Unidad:</strong> {selectedSinAtencionNodo.Unidad}</p> {/* Muestra la unidad del nodo */}
-                        <p><strong>Categoría del Cable:</strong> {selectedSinAtencionNodo.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                        {/* Muestra la observaciones generales del nodo */}
-                        {!EstaVacio(selectedSinAtencionNodo.Observaciones) && (
-                            <p><strong>Observaciones generales:</strong> {selectedSinAtencionNodo.Observaciones}</p>
-                        )}
-                        {/* Tabla con los registros de mantenimiento que sólo se muestra si hay registros en la BD */}
-                        {!EstaVacio(selectedSinAtencionNodo.mantenimiento) && (
-                            <div style={{ overflowX: 'auto', width: '100%' }}>
-                                <table>
-                                    <thead>
-                                        <th>Fecha de registro</th>
-                                        <th>Observaciones del usuario</th>
-                                    </thead>
-                                    <tbody className='content-table-modal'>
-                                        {selectedSinAtencionNodo.mantenimiento.map((CamposMantenimiento, index) => ( // Mapea los registros de mantenimiento
-                                            <tr key={index}> {/* Clave única para cada fila */}
-                                                <td>{CamposMantenimiento.FechaCambio}</td>
-                                                <td>{CamposMantenimiento.ObservacionesUsuario}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) || (<p style={{ color: 'grey' }}>No hay registros en la tabla</p>)}
-                        <div> {/* Contenedor de las imágenes */}
-                            <br />
-                            <strong>Imágenes con las que se solventaron:</strong>
-                            <br />
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedSinAtencionNodo?.imagesSolventadas && selectedSinAtencionNodo.imagesSolventadas.length > 0 ? ( // Muestra las imágenes si hay
-                                    selectedSinAtencionNodo.imagesSolventadas.map((image, index) => {
-                                        // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                        const fileName = image.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                        const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
+            <EditNodeModal 
+                nodoToEdit={nodoToEdit}
+                editFormData={editFormData}
+                unidades={unidades}
+                handleEditFormChange={handleEditFormChange}
+                handleFileChange={handleFileChange}
+                handleDeleteImage={handleDeleteImage}
+                handleSaveChanges={handleSaveChanges}
+                handleCloseModal={handleCloseModal}
+                handleOpenMaterialesModal={handleOpenMaterialesModal}
+                handleImageClick={handleImageClick}
+                newImageFiles={newImageFiles}
+                setNewImageFiles={setNewImageFiles}
+            />
 
-                                        // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                        const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                            ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                day: '2-digit',
-                                                month: '2-digit',
-                                                year: 'numeric',
-                                            })
-                                            : 'Fecha no disponible';
-                                        return ( // Mapea las imágenes y las muestra
-                                            <div key={index}>
-                                                <div>
-                                                    {formattedDate}
-                                                </div>
-                                                <img
-                                                    key={index} // Clave única para cada imagen
-                                                    src={`${API_URL}` + image.ImagenURL}  // URL de la imagen
-                                                    alt={`Imagen ${index + 1}`} // Texto alternativo
-                                                    width="200" // Ancho de la imagen
-                                                    style={{ margin: '5px', cursor: 'pointer' }} // Estilos
-                                                    onClick={() => handleImageClick(image.ImagenURL)} // Mostrar la imagen en grande
-                                                />
-                                            </div>
-                                        );
-                                    })
-                                ) : ( // Si no hay imágenes
-                                    <p>No hay imágenes disponibles.</p>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <Button onClick={handleCloseModal} variant="outlined">Cerrar</Button> {/* Botón para cancelar la eliminación */}
-                        </div>
-                    </div>
-                </div>
-            )}
+            <NodeMaterialsModal 
+                showMaterialesModal={showMaterialesModal}
+                nodoToEdit={nodoToEdit}
+                setShowMaterialesModal={setShowMaterialesModal}
+                pagination={pagination}
+                setPagination={setPagination}
+                filteredMaterials={filteredMaterials}
+                paginatedMaterials={paginatedMaterials}
+                handleMaterialChange={handleMaterialChange}
+                handleSaveMateriales={handleSaveMateriales}
+            />
 
-            {/* Modal para quitar otra atención */}
-            {selectedOtherAtencionNodo && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>¿Estás seguro de que este nodo ya no requiere de otra atención?</h3>
-                        <p><strong>Ubicación:</strong> {selectedOtherAtencionNodo.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                        <p><strong>Unidad:</strong> {selectedOtherAtencionNodo.Unidad}</p> {/* Muestra la unidad del nodo */}
-                        <p><strong>Categoría del Cable:</strong> {selectedOtherAtencionNodo.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                        {/* Muestra la observaciones generales del nodo */}
-                        {!EstaVacio(selectedOtherAtencionNodo.Observaciones) && (
-                            <p><strong>Observaciones generales:</strong> {selectedOtherAtencionNodo.Observaciones}</p>
-                        )}
-                        {/* Tabla con los registros de otras atenciones que sólo se muestra si hay registros en la BD */}
-                        {!EstaVacio(selectedOtherAtencionNodo.otrasAtenciones) && (
-                            <div style={{ overflowX: 'auto', width: '100%' }}>
-                                <table>
-                                    <thead>
-                                        <th>Fecha de registro</th>
-                                        <th>Observaciones del usuario</th>
-                                    </thead>
-                                    <tbody className='content-table-modal'>
-                                        {selectedOtherAtencionNodo.otrasAtenciones.map((CamposOtrasAtenciones, index) => ( // Mapea los registros de otras atenciones y los muestra
-                                            <tr key={index}> {/* Clave única para cada fila */}
-                                                <td>{CamposOtrasAtenciones.FechaCambio}</td>
-                                                <td>{CamposOtrasAtenciones.ObservacionesUsuario}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) || (<p style={{ color: 'grey' }}>No hay registros en la tabla</p>)}
-                        <div> {/* Contenedor de las imágenes */}
-                            <br />
-                            <strong>Imágenes con las que se solventaron:</strong>
-                            <br />
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedOtherAtencionNodo?.imagesSolventadas && selectedOtherAtencionNodo.imagesSolventadas.length > 0 ? ( // Muestra las imágenes si hay
-                                    selectedOtherAtencionNodo.imagesSolventadas.map((image, index) => {
-                                        // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                        const fileName = image.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                        const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
+            {/* Attention Modals */}
+            <NodeAttentionModal 
+                nodo={selectedAtencionNodo}
+                title="¿Estás seguro de que este nodo ya no requiere mantenimiento?"
+                onClose={handleCloseModal}
+                onSolventarParcialmente={handleParcialAtencion}
+                onSolventarCompletamente={handleDeleteAtencion}
+                handleImageClick={handleImageClick}
+                completeActionText="Ya no requiere mantenimiento"
+            />
 
-                                        // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                        const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                            ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                day: '2-digit',
-                                                month: '2-digit',
-                                                year: 'numeric',
-                                            })
-                                            : 'Fecha no disponible';
-                                        return ( // Mapea las imágenes y las muestra
-                                            <div key={index}>
-                                                <div>
-                                                    {formattedDate}
-                                                </div>
-                                                <img
-                                                    key={index} // Clave única para cada imagen
-                                                    src={`${API_URL}` + image.ImagenURL}  // URL de la imagen
-                                                    alt={`Imagen ${index + 1}`} // Texto alternativo
-                                                    width="200" // Ancho de la imagen
-                                                    style={{ margin: '5px', cursor: 'pointer' }} // Estilos
-                                                    onClick={() => handleImageClick(image.ImagenURL)} // Mostrar la imagen en grande
-                                                />
-                                            </div>
-                                        );
-                                    })
-                                ) : ( // Si no hay imágenes
-                                    <p>No hay imágenes disponibles.</p>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <Button onClick={handleParcialOtherAtencion} variant="contained">Solventado parcialmente</Button> {/* Botón para confirmar la eliminación */}
-                            <Button onClick={handleDeleteOtherAtencion} className='delete-button'>Ya no requiere atención</Button> {/* Botón para confirmar la eliminación */}
-                            <Button onClick={handleCloseModal} variant="outlined">Cancelar</Button> {/* Botón para cancelar la eliminación */}
-                        </div>
-                    </div>
-                </div>
-            )}
+            <NodeAttentionModal 
+                nodo={selectedSinAtencionNodo}
+                title="Este nodo no requiere mantenimiento"
+                onClose={handleCloseModal}
+                handleImageClick={handleImageClick}
+                showActions={false}
+            />
 
-            {/* Modal para mostrar historial de mantenimientos para un nodo que no requiere mantenimiento */}
-            {selectedSinOtherAtencionNodo && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Este nodo no requiere otras atenciones</h3>
-                        <p><strong>Ubicación:</strong> {selectedSinOtherAtencionNodo.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                        <p><strong>Unidad:</strong> {selectedSinOtherAtencionNodo.Unidad}</p> {/* Muestra la unidad del nodo */}
-                        <p><strong>Categoría del Cable:</strong> {selectedSinOtherAtencionNodo.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                        {/* Muestra la observaciones generales del nodo */}
-                        {!EstaVacio(selectedSinOtherAtencionNodo.Observaciones) && (
-                            <p><strong>Observaciones generales:</strong> {selectedSinOtherAtencionNodo.Observaciones}</p>
-                        )}
-                        {/* Tabla con los registros de mantenimiento que sólo se muestra si hay registros en la BD */}
-                        {!EstaVacio(selectedSinOtherAtencionNodo.otrasAtenciones) && (
-                            <div style={{ overflowX: 'auto', width: '100%' }}>
-                                <table>
-                                    <thead>
-                                        <th>Fecha de registro</th>
-                                        <th>Observaciones del usuario</th>
-                                    </thead>
-                                    <tbody className='content-table-modal'>
-                                        {selectedSinOtherAtencionNodo.otrasAtenciones.map((CamposOtrasAtenciones, index) => ( // Mapea los registros de otras atenciones
-                                            <tr key={index}> {/* Clave única para cada fila */}
-                                                <td>{CamposOtrasAtenciones.FechaCambio}</td>
-                                                <td>{CamposOtrasAtenciones.ObservacionesUsuario}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        ) || (<p style={{ color: 'grey' }}>No hay registros en la tabla</p>)} {/* Coloca un mensaje en caso de estar sin registros */}
-                        <div> {/* Contenedor de las imágenes */}
-                            <br />
-                            <strong>Imágenes con las que se solventaron:</strong>
-                            <br />
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedSinOtherAtencionNodo?.imagesSolventadas && selectedSinOtherAtencionNodo.imagesSolventadas.length > 0 ? ( // Muestra las imágenes si hay
-                                    selectedSinOtherAtencionNodo.imagesSolventadas.map((image, index) => {
-                                        // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                        const fileName = image.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                        const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
+            <NodeAttentionModal 
+                nodo={selectedOtherAtencionNodo}
+                title="¿Estás seguro de que este nodo ya no requiere de otra atención?"
+                onClose={handleCloseModal}
+                onSolventarParcialmente={handleParcialOtherAtencion}
+                onSolventarCompletamente={handleDeleteOtherAtencion}
+                handleImageClick={handleImageClick}
+                completeActionText="Ya no requiere atención"
+                historialLabel="Historial de otras atenciones"
+            />
 
-                                        // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                        const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                            ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                day: '2-digit',
-                                                month: '2-digit',
-                                                year: 'numeric',
-                                            })
-                                            : 'Fecha no disponible';
-                                        return ( // Mapea las imágenes y las muestra
-                                            <div key={index}>
-                                                <div>
-                                                    {formattedDate}
-                                                </div>
-                                                <img
-                                                    key={index} // Clave única para cada imagen
-                                                    src={`${API_URL}` + image.ImagenURL}  // URL de la imagen
-                                                    alt={`Imagen ${index + 1}`} // Texto alternativo
-                                                    width="200" // Ancho de la imagen
-                                                    style={{ margin: '5px', cursor: 'pointer' }} // Estilos
-                                                    onClick={() => handleImageClick(image.ImagenURL)} // Mostrar la imagen en grande
-                                                />
-                                            </div>
-                                        );
-                                    })
-                                ) : ( // Si no hay imágenes
-                                    <p>No hay imágenes disponibles.</p>
-                                )}
-                            </div>
-                        </div>
-                        <div>
-                            <Button onClick={handleCloseModal} variant="outlined">Cerrar</Button> {/* Botón para cancelar la eliminación */}
-                        </div>
-                    </div>
-                </div>
-            )}
+            <NodeAttentionModal 
+                nodo={selectedSinOtherAtencionNodo}
+                title="Este nodo no requiere otras atenciones"
+                onClose={handleCloseModal}
+                handleImageClick={handleImageClick}
+                showActions={false}
+                historialLabel="Historial de otras atenciones"
+            />
 
-            {/* Modal para mostrar los detalles */}
-            {selectedNodo && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                        style={{ minWidth: '30%' }}
-                    > {/* Contenedor del modal */}
-                        <h3>Detalles del Nodo</h3>
-                        <div className='content-modal-details'>
-                            <div className='content-details'>
+            {/* Observation Modals */}
+            <ObservationModal 
+                isOpen={showObservacionesModal}
+                title="Motivos del cambio del estado"
+                observacionesUsuario={observacionesUsuario}
+                setObservacionesUsuario={setObservacionesUsuario}
+                onFileChange={(e) => {
+                    const files = Array.from(e.target.files);
+                    const uniqueFiles = files.reduce((acc, file) => {
+                        const isDuplicate = acc.some(f => f.name === file.name && f.size === file.size);
+                        if (!isDuplicate) acc.push(file);
+                        return acc;
+                    }, []);
+                    setNewImageFilesAtencion(uniqueFiles);
+                }}
+                onCancel={() => {
+                    setEditFormData(prev => ({
+                        ...prev,
+                        [campoCambiado]: !prev[campoCambiado],
+                    }));
+                    setShowObservacionesModal(false);
+                }}
+                onConfirm={async () => {
+                    const formData = new FormData();
+                    formData.append('Ubicacion', editFormData.Ubicacion);
+                    formData.append('Unidad', editFormData.Unidad);
+                    formData.append('atencion', editFormData.Atencion ? 1 : 0);
+                    formData.append('otraAtencion', editFormData.OtraAtencion ? 1 : 0);
+                    formData.append('observacionesUsuario', observacionesUsuario);
+                    formData.append('esAtencionParcialMante', false);
+                    formData.append('esAtencionParcialOtro', false);
+                    newImageFilesAtencion.forEach((file) => formData.append('newImagesAtencion', file));
 
-                                <p style={{ color: '#fe0000' }}>{selectedNodo.OtraAtencion ? '⚠️⚠️ESTE NODO REQUIERE OTRO TIPO DE ATENCIÓN⚠️⚠️' : ''}</p> {/* Muestra si requiere atencion el nodo*/}
-                                <p style={{ color: '#ff0000' }}>{selectedNodo.Atencion ? '⚠️⚠️ESTE NODO REQUIERE MANTENIMIENTO⚠️⚠️' : ''}</p> {/* Muestra si requiere atencion el nodo*/}
-                                <p><strong>Ubicación:</strong> {selectedNodo.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                                <p><strong>Unidad:</strong> {selectedNodo.Unidad}</p> {/* Muestra la unidad del nodo */}
-                                <p><strong>Categoría del Cable:</strong> {selectedNodo.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                                <p><strong>Año de Instalación:</strong> {selectedNodo.AnioInstalacion}</p> {/* Muestra el año de instalación */}
-                                <p><strong>Estado del Cable:</strong> {selectedNodo.EstadoCable}</p> {/* Muestra el estado del cable */}
-                                <p><strong>Puerto:</strong> {selectedNodo.Puerto}</p> {/* Muestra el puerto */}
-                                {/* Muestra el área */}
-                                {!EstaVacio(selectedNodo.Area) && (
-                                    <p><strong>Área:</strong> {selectedNodo.Area}</p>
-                                )}
-                                {/* Muestra la longitud */}
-                                {!EstaVacio(selectedNodo.Longitud) && (
-                                    <p><strong>Longitud:</strong> {selectedNodo.Longitud}</p>
-                                )}
-                                {/* Muestra la IP del nodo */}
-                                {!EstaVacio(selectedNodo.IpSwitch) && (
-                                    <p><strong>IP del Nodo:</strong> {selectedNodo.IpSwitch}</p>
-                                )}
-                                {/* Muestra las observaciones del nodo*/}
-                                {!EstaVacio(selectedNodo.Observaciones) && (
-                                    <p><strong>Observaciones:</strong> {selectedNodo.Observaciones}</p>
-                                )}
-                            </div>
-                            {/* Contenedor de los materiales */}
-                            <div className='content-Materials'>
-                                {!EstaVacio(selectedNodo.materiales) && (
-                                    <div>
-                                        <strong>Materiales necesarios:</strong>
-                                        <div style={{ overflowX: 'auto', width: '100%' }}>
-                                            <table>
-                                                <thead>
-                                                    <th>Material</th>
-                                                    <th>Cantidad</th>
-                                                </thead>
-                                                <tbody className='content-table-modal'>
-                                                    {selectedNodo.materiales.map((CamposMaterialesNecesarios, index) => ( // Mapea los materiales necesarios y los muestra
-                                                        <tr key={index}> {/* Clave única para cada fila */}
-                                                            <td>{CamposMaterialesNecesarios.Nombre}</td> {/* Coloca el nombre del material */}
-                                                            <td>{CamposMaterialesNecesarios.Necesarios}</td>  {/* Coloca la cantidad del material */}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                ) || (<p style={{ color: 'grey' }}>No hay materiales necesarios</p>)} {/* Coloca un mensaje en caso de estar sin materiales utilizados */}
-
-                                {!EstaVacio(selectedNodo.materiales) && (
-                                    <div>
-                                        <strong>Materiales utilizados:</strong>
-                                        <div style={{ overflowX: 'auto', width: '100%' }}>
-                                            <table>
-                                                <thead>
-                                                    <th>Material</th>
-                                                    <th>Cantidad</th>
-                                                </thead>
-                                                <tbody className='content-table-modal'>
-                                                    {selectedNodo.materiales.map((CamposMaterialesUtilizados, index) => (
-                                                        <tr key={index}> {/* Clave única para cada fila */}
-                                                            <td>{CamposMaterialesUtilizados.Nombre}</td> {/* Coloca el nombre del material */}
-                                                            <td>{CamposMaterialesUtilizados.Utilizados}</td>  {/* Coloca la cantidad del material */}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                ) || (<p style={{ color: 'grey' }}>No hay materiales Utilizados</p>)} {/* Coloca un mensaje en caso de estar sin materiales utilizados */}
-                            </div>
-                        </div>
-
-                        <br />
-
-                        <div> {/* Contenedor de las imágenes */}
-                            <strong>Imágenes:</strong>
-                            <br />
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {selectedNodo?.images && selectedNodo.images.length > 0 ? (
-                                    selectedNodo.images.map((image, index) => {
-                                        // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                        const fileName = image.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                        const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                        const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
-
-                                        // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                        const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                            ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                day: '2-digit',
-                                                month: '2-digit',
-                                                year: 'numeric',
-                                            })
-                                            : 'Fecha no disponible';
-
-                                        return (
-                                            <div key={index}>
-                                                <div>
-                                                    {image.ImagenURL.toLowerCase().includes('solventado') && (
-                                                        <span style={{ color: 'green' }}>(Dentro de Solventado) </span>
-                                                    ) || <span style={{ color: 'black' }}>(General) </span>}
-                                                    <br></br>
-                                                    {formattedDate}
-                                                </div>
-                                                <img
-                                                    src={`${API_URL}` + image.ImagenURL}
-                                                    alt={`Imagen ${index + 1}`}
-                                                    width="200"
-                                                    style={{ margin: '5px', cursor: 'pointer' }}
-                                                    onClick={() => handleImageClick(image.ImagenURL)}
-                                                />
-                                            </div>
-                                        );
-                                    })
-                                ) : (
-                                    <p>No hay imágenes disponibles.</p>
-                                )}
-                            </div>
-                        </div>
-                        <Button onClick={handleCloseModal} variant="outlined">Cerrar</Button> {/* Botón para cerrar el modal */}
-                    </div>
-                </div>
-            )}
-
-            {/* Modal para mostrar la imagen en grande */}
-            {selectedImage && (
-                <div
-                    className="modal-overlay"
-                    onClick={() => setSelectedImage(null)} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <img
-                            src={selectedImage} // URL de la imagen
-                            alt="Imagen en grande" // Texto alternativo
-                            style={{ maxWidth: '75%', maxHeight: '75%' }} // Estilos
-                        />
-                        <br /><br />
-                        <a href={selectedImage} target="_blank" rel="noopener noreferrer">
-                            URL: {selectedImage}
-                        </a>
-                        <br /><br />
-                        <Button onClick={() => setSelectedImage(null)} variant="outlined">Cerrar</Button> {/* Botón para cerrar el modal */}
-                    </div>
-                </div>
-            )}
-
-            {/* Modal de confirmación para eliminar */}
-            {nodoToDelete && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>¿Estás seguro de eliminar este Nodo?</h3>
-                        <p><strong>Ubicación:</strong> {nodoToDelete.Ubicacion}</p> {/* Muestra la ubicación del nodo */}
-                        <p><strong>Unidad:</strong> {nodoToDelete.Unidad}</p> {/* Muestra la unidad del nodo */}
-                        <p><strong>Categoría del Cable:</strong> {nodoToDelete.CategoriaCable}</p> {/* Muestra la categoría del cable */}
-                        <p><strong>Año de Instalación:</strong> {nodoToDelete.AnioInstalacion}</p> {/* Muestra el año de instalación */}
-                        <div>
-                            <Button onClick={handleConfirmDelete} className='delete-button'>Sí, eliminar</Button> {/* Botón para confirmar la eliminación */}
-                            <Button onClick={handleCloseModal} variant="outlined">Cancelar</Button> {/* Botón para cancelar la eliminación */}
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal para editar el nodo */}
-            {nodoToEdit && (
-                <div
-                    className="modal-overlay"
-                    onClick={handleCloseModal} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Editar Nodo</h3>
-                        <form>
-                            {/* Campos del formulario */}
-                            <div>
-                                <label>Ubicación:</label>
-                                <input
-                                    name="Ubicacion" // Nombre del campo
-                                    value={editFormData.Ubicacion || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Unidad:</label>
-                                <select
-                                    name="Unidad" // Nombre del campo
-                                    value={editFormData.Unidad || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                >
-                                    <option value="">Seleccione una unidad</option>
-                                    {unidades.map((unidad) => ( // Mapear las unidades para mostrarlas en el select
-                                        <option key={unidad.nombre} value={unidad.nombre}> {/* Opción de la unidad con su referencia */}
-                                            {unidad.nombre} {/* Nombre de la unidad */}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label>Categoría del Cable:</label>
-                                <select
-                                    name='CategoriaCable' // Nombre del campo
-                                    value={editFormData.CategoriaCable || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                >
-                                    <option value=''>Seleccione una categoría</option> {/* Opción por defecto */}
-                                    <option value='5'>Categoría 5</option> {/* Opciones de categoría */}
-                                    <option value='5e'>Categoría 5e</option> {/* Opciones de categoría */}
-                                    <option value='6'>Categoría 6</option> {/* Opciones de categoría */}
-                                    <option value='6A'>Categoría 6A</option> {/* Opciones de categoría */}
-                                </select>
-                            </div>
-                            <div>
-                                <label>Año de Instalación:</label>
-                                <input
-                                    name="AnioInstalacion" // Nombre del campo
-                                    type="number" // Tipo de campo
-                                    min="0"
-                                    max={new Date().getFullYear()} // Año actual
-                                    value={editFormData.AnioInstalacion || '0'} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Estado del Cable:</label>
-                                <select
-                                    name='EstadoCable' // Nombre del campo
-                                    value={editFormData.EstadoCable || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                >
-                                    <option value='Bueno'>Bueno</option> {/* Opciones de estado */}
-                                    <option value='Regular'>Regular</option> {/* Opciones de estado */}
-                                    <option value='Malo'>Malo</option> {/* Opciones de estado */}
-                                </select>
-                            </div>
-                            <div>
-                                <label>Puerto:</label>
-                                <input
-                                    name="Puerto" // Nombre del campo
-                                    value={editFormData.Puerto || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Área:</label>
-                                <input
-                                    name="Area" // Nombre del campo
-                                    value={editFormData.Area || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Longitud:</label>
-                                <input
-                                    name="Longitud" // Nombre del campo
-                                    type="number"  // Tipo de dato
-                                    min="0" // Valor mínimo
-                                    step="0.01"   // Permite decimales
-                                    value={editFormData.Longitud || 0}  // Valor por defecto 0
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>IP del Nodo:</label>
-                                <input
-                                    name="IpSwitch" // Nombre del campo
-                                    value={editFormData.IpSwitch || ''} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Nodos faltantes:</label>
-                                <input
-                                    name="Nodos_faltantes" // Nombre del campo
-                                    type="number"  // Cambiado a type="number"
-                                    min="0" // Valor mínimo
-                                    value={editFormData.Nodos_faltantes || 0}  // Valor por defecto 0
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                />
-                            </div>
-                            <div>
-                                <label>Observaciones:</label>
-                                <textarea
-                                    name="Observaciones" // Nombre del campo
-                                    value={editFormData.Observaciones} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                    style={{ height: '65px', width: '99%', resize: 'none', borderRadius: '5px' }}
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <Tooltip title='Editar materiales del nodo'>
-                                    <Button
-                                        size="large"
-                                        variant="contained"
-                                        onClick={handleOpenMaterialesModal} // Abrir el modal de materiales
-                                    >
-                                        Materiales
-                                    </Button>
-                                </Tooltip>
-                            </div>
-                            <div>
-                                <label>Requiere Mantenimiento:</label>
-                                <input
-                                    type="checkbox" // Tipo de campo
-                                    name="Atencion" // Nombre del campo
-                                    checked={editFormData.Atencion || false} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                    style={{ width: '40px', height: '40px' }}
-                                />
-                            </div>
-                            <div>
-                                <label>Requiere otro tipo de atención:</label>
-                                <input
-                                    type="checkbox" // Tipo de campo
-                                    name="OtraAtencion" // Nombre del campo
-                                    checked={editFormData.OtraAtencion || false} // Valor del campo
-                                    onChange={handleEditFormChange} // Manejar cambios en el campo
-                                    style={{ width: '40px', height: '40px' }}
-                                />
-                            </div>
-                            <div>
-                                <label>Agregar Nuevas Imágenes:</label>
-                                <input
-                                    type="file" // Tipo de campo
-                                    name="newImages" // Nombre del campo
-                                    multiple // Permitir la selección de múltiples archivos
-                                    onChange={handleFileChange} // Guardar las nuevas imágenes en el estado
-                                />
-                            </div>
-                            <div>
-                                <h4>Imágenes Existentes:</h4>
-                                <div className="image-grid">
-                                    {editFormData.images && editFormData.images.length > 0 ? ( // Muestra las imágenes si hay
-                                        editFormData.images.map((img, index) => {
-                                            // Extraer el timestamp (últimos números antes de .png/.jpg)
-                                            const fileName = img.ImagenURL.split('/').pop(); // Obtener "..._UNIDAD_1744139192838.png"
-                                            const timestampMatch = fileName.match(/(\d+)\.\w+$/); // Extrae solo los números antes de la extensión
-                                            const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
-
-                                            // Validar que el timestamp sea una fecha razonable (posterior a 2010)
-                                            const formattedDate = timestamp && new Date(timestamp).getFullYear() >= 2010
-                                                ? new Date(timestamp).toLocaleDateString('es-MX', {
-                                                    day: '2-digit',
-                                                    month: '2-digit',
-                                                    year: 'numeric',
-                                                })
-                                                : 'Fecha no disponible';
-                                            return ( // Mapea las imágenes y las muestra
-                                                <div key={index} className="image-item">
-                                                    <div>
-                                                        {img.ImagenURL.toLowerCase().includes('solventado') && (
-                                                            <span style={{ color: 'green' }}>(Dentro de Solventado) </span>
-                                                        ) || <span style={{ color: 'black' }}>(General) </span>}
-                                                        <br></br>
-                                                        {formattedDate}
-                                                    </div>
-                                                    <img
-                                                        src={`${API_URL}` + img.ImagenURL}
-                                                        alt={`Imagen ${index + 1}`}
-                                                        className="image-thumbnail"
-                                                    />
-                                                    <Button
-                                                        onClick={() => handleDeleteImage(img.Id)} // Eliminar la imagen
-                                                        className='delete-button'
-                                                    >
-                                                        Eliminar
-                                                    </Button>
-                                                </div>
-                                            );
-                                        })
-                                    ) : ( // Si no hay imágenes
-                                        <p>No hay imágenes disponibles.</p>
-                                    )}
-                                </div>
-                            </div>
-                            <div>
-                                <Button variant="contained" onClick={handleSaveChanges} style={{ marginRight: '10px' }}> {/* Guardar los cambios */}
-                                    Guardar Cambios
-                                </Button>
-                                <Button variant="outlined" onClick={handleCloseModal}> {/* Cancelar la edición */}
-                                    Cancelar
-                                </Button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal para ingresar observaciones (showObservacionesModal) */}
-            {showObservacionesModal && (
-                <div
-                    className="modal-overlay"
-                    onClick={() => {
-                        // Revertir el cambio si el usuario cancela
-                        setEditFormData({
-                            ...editFormData,
-                            [campoCambiado]: !editFormData[campoCambiado],
+                    try {
+                        await axios.put(`${API_URL}/api/nodos/updateAtencion/${nodoToEdit.Id}`, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' },
                         });
+                        setNewImageFilesAtencion([]);
                         setShowObservacionesModal(false);
-                    }}
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Motivos del cambio del estado</h3>
-                        <div>
-                            <textarea
-                                placeholder="Ingrese los motivos del cambio de estado..."
-                                value={observacionesUsuario} // Valor del campo
-                                onChange={(e) => setObservacionesUsuario(e.target.value)} // Manejar cambios en el campo
-                                style={{ height: '128px', width: '600px', resize: 'none', borderRadius: '5px' }}
-                            />
-                        </div>
-                        <div>
-                            <label>Agregar Nuevas Imágenes:</label>
-                            <input
-                                type="file" // Tipo de campo
-                                name="newImagesAtencion" // Nombre del campo
-                                multiple // Permitir la selección de múltiples archivos
-                                onChange={(e) => {
-                                    const files = Array.from(e.target.files);
-                                    const uniqueFiles = files.reduce((acc, file) => {
-                                        const isDuplicate = acc.some(f => f.name === file.name && f.size === file.size);
-                                        if (!isDuplicate) acc.push(file);
-                                        return acc;
-                                    }, []);
-                                    setNewImageFilesAtencion(uniqueFiles);
-                                }} // Guardar las nuevas imágenes en el estado de atención
-                            />
-                        </div>
-                        <div>
-                            <Button
-                                variant="contained"
-                                style={{ marginRight: '10px' }}
-                                onClick={async () => {
-                                    // Crear un FormData para enviar las observaciones y las imágenes
-                                    const formData = new FormData();
-                                    formData.append('Ubicacion', editFormData.Ubicacion); // Agrega los datos del formulario al objeto FormData
-                                    formData.append('Unidad', editFormData.Unidad); // Agrega los datos del formulario al objeto FormData
-                                    formData.append('atencion', editFormData.Atencion ? 1 : 0); // Estado de Atencion
-                                    formData.append('otraAtencion', editFormData.OtraAtencion ? 1 : 0); // Estado de OtraAtencion
-                                    formData.append('observacionesUsuario', observacionesUsuario);
-                                    formData.append('esAtencionParcialMante', false);
-                                    formData.append('esAtencionParcialOtro', false);
-                                    newImageFilesAtencion.forEach((file) => { // Agregar cada archivo al FormData
-                                        formData.append('newImagesAtencion', file);
-                                    });
+                    } catch (error) {
+                        console.error('Error al guardar los cambios:', error);
+                        alert('Error al guardar los cambios');
+                    }
+                }}
+            />
 
-                                    try {
-                                        // Enviar los datos al backend
-                                        await axios.put(
-                                            `${API_URL}/api/nodos/updateAtencion/${nodoToEdit.Id}`,
-                                            formData,
-                                            {
-                                                headers: {
-                                                    'Content-Type': 'multipart/form-data',
-                                                },
-                                            }
-                                        );
-                                        setNewImageFilesAtencion([]); // Limpiar el estado de las nuevas imágenes de atención
-                                        setShowObservacionesModal(false); // Cerrar la sub-modal, permitir al usuario continuar editando
-                                    } catch (error) {
-                                        console.error('Error al guardar los cambios:', error);
-                                        alert('Error al guardar los cambios');
-                                    }
-                                }}
-                            >
-                                Confirmar
-                            </Button>
-                            <Button
-                                variant="outlined"
-                                onClick={() => {
-                                    // Revertir el cambio si el usuario cancela
-                                    setEditFormData({
-                                        ...editFormData,
-                                        [campoCambiado]: !editFormData[campoCambiado],
-                                    });
-                                    setShowObservacionesModal(false);
-                                }}
-                            >
-                                Cancelar
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ObservationModal 
+                isOpen={showObservacionesModalTable}
+                title="Motivos del cambio"
+                observacionesUsuario={observacionesUsuario}
+                setObservacionesUsuario={setObservacionesUsuario}
+                onFileChange={handleFileChange}
+                onCancel={() => setShowObservacionesModalTable(false)}
+                onConfirm={async () => {
+                    const formData = new FormData();
+                    formData.append('esAtencionParcialMante', false);
+                    formData.append('esAtencionParcialOtro', false);
+                    
+                    const nodoReferencia = tipoAtencion === 'Atencion' ? selectedAtencionNodo : selectedOtherAtencionNodo;
+                    formData.append('Ubicacion', nodoReferencia.Ubicacion);
+                    formData.append('Unidad', nodoReferencia.Unidad);
+                    formData.append('observacionesUsuario', observacionesUsuario);
+                    newImageFiles.forEach((file) => formData.append('newImages', file));
 
-            {/* Modal para ingresar observaciones (showObservacionesModalTable) */}
-            {showObservacionesModalTable && (
-                <div
-                    className="modal-overlay"
-                    onClick={() => setShowObservacionesModalTable(false)} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Motivos del cambio</h3>
-                        <div>
-                            <textarea
-                                placeholder="Ingrese los motivos del cambio..."
-                                value={observacionesUsuario} // Valor del campo
-                                onChange={(e) => setObservacionesUsuario(e.target.value)} // Manejar cambios en el campo
-                                style={{ height: '128px', width: '600px', resize: 'none', borderRadius: '5px' }}
-                            />
-                        </div>
-                        <div>
-                            <label>Agregar Nuevas Imágenes:</label>
-                            <input
-                                type="file" // Tipo de campo
-                                name="newImages" // Nombre del campo
-                                multiple // Permitir la selección de múltiples archivos
-                                onChange={handleFileChange} // Guardar las nuevas imágenes en el estado
-                            />
-                        </div>
-                        <div>
-                            <Button
-                                variant="contained"
-                                style={{ marginRight: '10px' }}
-                                onClick={async () => {
-                                    // Crear un FormData para enviar las observaciones y las imágenes
-                                    const formData = new FormData();
-                                    formData.append('esAtencionParcialMante', false);
-                                    formData.append('esAtencionParcialOtro', false);
-                                    if (tipoAtencion === 'Atencion') {
-                                        formData.append('Ubicacion', selectedAtencionNodo.Ubicacion); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('Unidad', selectedAtencionNodo.Unidad); // Agrega los datos del formulario al objeto FormData
-                                    } else {
-                                        formData.append('Ubicacion', selectedOtherAtencionNodo.Ubicacion); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('Unidad', selectedOtherAtencionNodo.Unidad); // Agrega los datos del formulario al objeto FormData
-                                    }
-                                    formData.append('observacionesUsuario', observacionesUsuario);
-                                    newImageFiles.forEach((file) => { // Agregar cada archivo al FormData
-                                        formData.append('newImages', file);
-                                    });
+                    const endpoint = tipoAtencion === 'Atencion'
+                        ? `${API_URL}/api/nodos/atencion/${nodoReferencia.Id}`
+                        : `${API_URL}/api/nodos/otraAtencion/${nodoReferencia.Id}`;
 
-                                    // Determinar la API a la que se enviarán los datos
-                                    const endpoint = tipoAtencion === 'Atencion'
-                                        ? `${API_URL}/api/nodos/atencion/${selectedAtencionNodo.Id}`
-                                        : `${API_URL}/api/nodos/otraAtencion/${selectedOtherAtencionNodo.Id}`;
+                    try {
+                        await axios.put(endpoint, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' },
+                        });
+                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento' : 'Otra atención'} eliminada`);
+                        setNewImageFiles([]);
+                        handleCloseModal();
+                        fetchNewNodos();
+                    } catch (error) {
+                        console.error(`Error al eliminar ${tipoAtencion}:`, error);
+                        alert(`Error al eliminar ${tipoAtencion === 'Atencion' ? 'el mantenimiento' : 'otra atención'}`);
+                    }
+                }}
+            />
 
-                                    try {
-                                        // Enviar los datos al backend
-                                        await axios.put(endpoint, formData, {
-                                            headers: {
-                                                'Content-Type': 'multipart/form-data',
-                                            },
-                                        });
+            <ObservationModal 
+                isOpen={showObservacionesModalParcialTable}
+                title="Solventado Parcialmente"
+                placeholder="Ingrese los cambios solventados en el nodo..."
+                observacionesUsuario={observacionesUsuario}
+                setObservacionesUsuario={setObservacionesUsuario}
+                onFileChange={handleFileChange}
+                onCancel={() => setShowObservacionesModalParcialTable(false)}
+                onConfirm={async () => {
+                    const formData = new FormData();
+                    const nodoReferencia = tipoAtencion === 'Atencion' ? selectedAtencionNodo : selectedOtherAtencionNodo;
+                    
+                    formData.append('Ubicacion', nodoReferencia.Ubicacion);
+                    formData.append('Unidad', nodoReferencia.Unidad);
+                    formData.append('observacionesUsuario', observacionesUsuario);
+                    newImageFiles.forEach((file) => formData.append('newImagesAtencion', file));
+                    
+                    if (tipoAtencion === 'Atencion') {
+                        formData.append('atencion', 1);
+                        formData.append('otraAtencion', nodoReferencia.OtraAtencion ? 1 : 0);
+                        formData.append('esAtencionParcialMante', true);
+                        formData.append('esAtencionParcialOtro', false);
+                    } else {
+                        formData.append('atencion', nodoReferencia.Atencion ? 1 : 0);
+                        formData.append('otraAtencion', 1);
+                        formData.append('esAtencionParcialMante', false);
+                        formData.append('esAtencionParcialOtro', true);
+                    }
 
-                                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento' : 'Otra atención'} eliminada`);
-                                        setNewImageFiles([]); // Limpiar el estado de las nuevas imágenes
-                                        handleCloseModal(false); // Cerrar el modal
-                                        fetchNewNodos(); // Actualizar la lista de nodos
-                                    } catch (error) {
-                                        console.error(`Error al eliminar ${tipoAtencion === 'el mantenimiento' ? 'atención' : 'otra atención'}:`, error);
-                                        alert(`Error al eliminar ${tipoAtencion === 'Atencion' ? 'el mantenimiento' : 'otra atención'}`);
-                                    }
-                                }}
-                            >
-                                Confirmar
-                            </Button>
-                            <Button onClick={() => setShowObservacionesModalTable(false)} variant="outlined">Cancelar</Button>
-                        </div>
-                    </div>
-                </div>
-            )}
+                    try {
+                        await axios.put(`${API_URL}/api/nodos/updateAtencion/${nodoReferencia.Id}`, formData, {
+                            headers: { 'Content-Type': 'multipart/form-data' },
+                        });
+                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento parcialmente solucionado' : 'Otra atención parcialmente solucionada'}`);
+                        setNewImageFiles([]);
+                        fetchNewNodos();
+                        handleCloseModal();
+                    } catch (error) {
+                        console.error(`Error al solventar parcialmente:`, error);
+                        alert(`Error al solventar parcialmente`);
+                    }
+                }}
+            />
 
-            {/* Modal para ingresar observaciones (showObservacionesModalTable) */}
-            {showObservacionesModalParcialTable && (
-                <div
-                    className="modal-overlay"
-                    onClick={() => setShowObservacionesModalParcialTable(false)} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                    > {/* Contenedor del modal */}
-                        <h3>Solventado Parcialmente</h3>
-                        <div>
-                            <textarea
-                                placeholder="Ingrese los cambios solventados en el nodo..."
-                                value={observacionesUsuario} // Valor del campo
-                                onChange={(e) => setObservacionesUsuario(e.target.value)} // Manejar cambios en el campo
-                                style={{ height: '128px', width: '600px', resize: 'none', borderRadius: '5px' }}
-                            />
-                        </div>
-                        <div>
-                            <label>Agregar Nuevas Imágenes:</label>
-                            <input
-                                type="file" // Tipo de campo
-                                name="newImages" // Nombre del campo
-                                multiple // Permitir la selección de múltiples archivos
-                                onChange={handleFileChange} // Guardar las nuevas imágenes en el estado
-                            />
-                        </div>
-                        <div>
-                            <Button
-                                variant="contained"
-                                style={{ marginRight: '10px' }}
-                                onClick={async () => {
-                                    // Crear un FormData para enviar las observaciones y las imágenes
-                                    const formData = new FormData();
-                                    if (tipoAtencion === 'Atencion') {
-                                        formData.append('Ubicacion', selectedAtencionNodo.Ubicacion); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('Unidad', selectedAtencionNodo.Unidad); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('atencion', selectedAtencionNodo.Atencion ? 1 : 1); // Estado de Atencion
-                                        formData.append('otraAtencion', selectedAtencionNodo.OtraAtencion ? 1 : 0); // Estado de OtraAtencion
-                                        formData.append('esAtencionParcialMante', true);
-                                        formData.append('esAtencionParcialOtro', false);
-                                    } else {
-                                        formData.append('Ubicacion', selectedOtherAtencionNodo.Ubicacion); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('Unidad', selectedOtherAtencionNodo.Unidad); // Agrega los datos del formulario al objeto FormData
-                                        formData.append('atencion', selectedOtherAtencionNodo.Atencion ? 1 : 0); // Estado de Atencion
-                                        formData.append('otraAtencion', selectedOtherAtencionNodo.OtraAtencion ? 1 : 1); // Estado de OtraAtencion
-                                        formData.append('esAtencionParcialMante', false);
-                                        formData.append('esAtencionParcialOtro', true);
-                                    }
+            {/* Modal de Registro de Nodo */}
+            <Dialog open={showRegisterModal} onOpenChange={setShowRegisterModal}>
+                <DialogContent className="max-w-[95vw] sm:max-w-3xl md:max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-8 rounded-xl border border-slate-200 shadow-xl">
+                    <DialogHeader className="border-b border-slate-100 pb-4 mb-6">
+                        <DialogTitle className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+                            <i className="fas fa-network-wired text-emerald-700"></i> Registrar Nuevo Nodo
+                        </DialogTitle>
+                        <p className="text-sm text-slate-500 mt-1">Complete la información requerida para dar de alta un nodo en el padrón</p>
+                    </DialogHeader>
+                    <NodeForm 
+                        onAddNodo={fetchNewNodos} 
+                        onClose={() => setShowRegisterModal(false)} 
+                    />
+                </DialogContent>
+            </Dialog>
 
-                                    formData.append('observacionesUsuario', observacionesUsuario);
-                                    newImageFiles.forEach((file) => { // Agregar cada archivo al FormData
-                                        formData.append('newImagesAtencion', file);
-                                    });
-                                    try {
-                                        // Enviar los datos al backend
-                                        if (tipoAtencion === 'Atencion') {
-                                            await axios.put(
-                                                `${API_URL}/api/nodos/updateAtencion/${selectedAtencionNodo.Id}`,
-                                                formData,
-                                                {
-                                                    headers: {
-                                                        'Content-Type': 'multipart/form-data',
-                                                    },
-                                                }
-                                            );
-                                        } else {
-                                            await axios.put(
-                                                `${API_URL}/api/nodos/updateAtencion/${selectedOtherAtencionNodo.Id}`,
-                                                formData,
-                                                {
-                                                    headers: {
-                                                        'Content-Type': 'multipart/form-data',
-                                                    },
-                                                }
-                                            );
-                                        }
-                                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento parcialmente solucionado' : 'Otra atención parcialmente solucionada'}`);
-                                        setNewImageFiles([]); // Limpiar el estado de las nuevas imágenes
-                                        fetchNewNodos(); // Actualizar la lista de nodos
-                                        handleCloseModal(); // Cerrar el modal
-                                    } catch (error) {
-                                        console.error(`Error al solventar parcialmente la ${tipoAtencion === 'Atencion' ? 'mantenimiento' : 'otra atención'}:`, error);
-                                        alert(`Error al solventar parcialmente ${tipoAtencion === 'Atencion' ? 'mantenimiento' : 'otra atención'}`);
-                                    }
-                                }}
-                            >
-                                Confirmar
-                            </Button>
-                            <Button onClick={() => setShowObservacionesModalParcialTable(false)} variant="outlined">Cancelar</Button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Modal para editar materiales */}
-            {showMaterialesModal && nodoToEdit && ( // Verifica si el modal de materiales debe mostrarse
-                <div
-                    className="modal-overlay"
-                    onClick={() => setShowMaterialesModal(false)} // Cierra el modal al hacer clic en el overlay
-                >
-                    <div
-                        className="modal"
-                        onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                        style={{ maxWidth: '1100px', maxHeight: '80vh', overflowY: 'auto' }}
-                    > {/* Contenedor del modal */}
-                        <h3>Editar Materiales del Nodo</h3>
-                        <div>
-                            <TextField
-                                label="Buscar material"
-                                variant="outlined"
-                                size="small"
-                                value={pagination.searchTerm}
-                                onChange={(e) => setPagination({ ...pagination, searchTerm: e.target.value, page: 0 })}
-                                style={{ width: '300px', height: '50px' }}
-                            />
-
-                            <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <TablePagination
-                                    component="div"
-                                    count={filteredMaterials.length}
-                                    page={pagination.page}
-                                    onPageChange={(_, newPage) => setPagination({ ...pagination, page: newPage })}
-                                    rowsPerPage={pagination.rowsPerPage}
-                                    onRowsPerPageChange={(e) => setPagination({
-                                        ...pagination,
-                                        rowsPerPage: parseInt(e.target.value, 10),
-                                        page: 0
-                                    })}
-                                    rowsPerPageOptions={[5, 10, 25, 50, 100]}
-                                    labelRowsPerPage="Materiales por página:"
-                                />
-                            </div>
-                        </div>
-                        <div style={{ margin: '20px 0' }}>
-                            <List>
-                                {paginatedMaterials.map((material) => ( // Mapea los materiales y los muestra
-                                    <ListItem
-                                        key={material.Id} // Clave única para cada material
-                                        divider // Divisor entre los materiales
-                                        style={{
-                                            backgroundColor: material.editado ? '#f0f8ff' : 'inherit'
-                                        }}
-                                    >
-                                        <ListItemText
-                                            primary={
-                                                <>
-                                                    {material.Nombre} {/* Nombre del material */}
-                                                    {material.editado && ( // Muestra un mensaje si el material ha sido editado
-                                                        <span style={{
-                                                            marginLeft: '10px',
-                                                            color: '#1976d2',
-                                                            fontSize: '0.8rem'
-                                                        }}>
-                                                            (editado)
-                                                        </span>
-                                                    )}
-                                                </>
-                                            }
-                                            secondary={`${material.UnidadMedida} - ${material.Categoria}`} // Muestra la unidad de medida 
-                                            style={{ flex: '1 1 200px' }}
-                                        />
-
-                                        <div style={{ display: 'flex', gap: '20px', marginLeft: '20px' }}>
-                                            <TextField
-                                                label="Necesarios"
-                                                type="number" // Tipo de campo
-                                                inputProps={{
-                                                    min: 0, // Valor mínimo
-                                                    step: material.UnidadMedida === 'piezas' ? 1 : 0.01, // Paso del campo
-                                                    pattern: material.UnidadMedida === 'piezas' ? '\\d*' : null // Patrón para aceptar sólo números enteros
-                                                }}
-                                                value={material.Necesarios} // Valor del campo
-                                                onChange={(e) => {
-                                                    // Validación en tiempo real para piezas
-                                                    if (material.UnidadMedida === 'piezas') {
-                                                        const regex = /^[0-9]*$/;
-                                                        if (regex.test(e.target.value) || e.target.value === '') {
-                                                            handleMaterialChange(
-                                                                material.Id,
-                                                                'Necesarios',
-                                                                e.target.value,
-                                                                material.UnidadMedida
-                                                            ); // Manejar cambios en el campo
-                                                        }
-                                                    } else {
-                                                        handleMaterialChange(
-                                                            material.Id,
-                                                            'Necesarios',
-                                                            e.target.value,
-                                                            material.UnidadMedida
-                                                        ); // Manejar cambios en el campo
-                                                    }
-                                                }}
-                                                onBlur={(e) => {
-                                                    // Asegurar valor mínimo al perder foco
-                                                    if (e.target.value === '') {
-                                                        handleMaterialChange(
-                                                            material.Id,
-                                                            'Necesarios',
-                                                            0,
-                                                            material.UnidadMedida
-                                                        ); // Manejar cambios en el campo
-                                                    }
-                                                }}
-                                                style={{ width: '120px' }}
-                                            />
-
-                                            <TextField
-                                                label="Utilizados"
-                                                type="number"
-                                                inputProps={{
-                                                    min: 0, // Valor mínimo
-                                                    step: material.UnidadMedida === 'piezas' ? 1 : 0.01, // Paso del campo
-                                                    pattern: material.UnidadMedida === 'piezas' ? '\\d*' : null // Patrón para aceptar sólo números enteros
-                                                }}
-                                                value={material.Utilizados} // Valor del campo
-                                                onChange={(e) => {
-                                                    // Validación en tiempo real para piezas
-                                                    if (material.UnidadMedida === 'piezas') {
-                                                        const regex = /^[0-9]*$/;
-                                                        if (regex.test(e.target.value) || e.target.value === '') {
-                                                            handleMaterialChange(
-                                                                material.Id,
-                                                                'Utilizados',
-                                                                e.target.value,
-                                                                material.UnidadMedida
-                                                            ); // Manejar cambios en el campo
-                                                        }
-                                                    } else {
-                                                        handleMaterialChange(
-                                                            material.Id,
-                                                            'Utilizados',
-                                                            e.target.value,
-                                                            material.UnidadMedida
-                                                        ); // Manejar cambios en el campo
-                                                    }
-                                                }}
-                                                onBlur={(e) => {
-                                                    // Asegurar valor mínimo al perder foco
-                                                    if (e.target.value === '') {
-                                                        handleMaterialChange(
-                                                            material.Id,
-                                                            'Utilizados',
-                                                            0,
-                                                            material.UnidadMedida
-                                                        ); // Manejar cambios en el campo
-                                                    }
-                                                }}
-                                                style={{ width: '120px' }}
-                                            />
-                                        </div>
-                                    </ListItem>
-                                ))}
-                                {filteredMaterials.length === 0 && (
-                                    <Typography style={{ padding: '16px', textAlign: 'center' }}>
-                                        No se encontraron materiales
-                                    </Typography>
-                                )}
-                            </List>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-                            <Button
-                                variant="contained"
-                                color="primary"
-                                onClick={handleSaveMateriales} // Guardar los cambios en los materiales
-                            >
-                                Guardar Materiales
-                            </Button>
-
-                            <Button
-                                variant="outlined"
-                                onClick={() => setShowMaterialesModal(false)} // Cerrar el modal de materiales
-                            >
-                                Cancelar
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
-
-export default NodeTable; // Exporta el componente NodeTable
+export default NodeTable;

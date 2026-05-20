@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+    background-color: #f0f4f8;
+    color: #1a202c;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #006341;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #004d32;
+}
+
+/* Ocultar ícono de ojo nativo de Edge en contraseñas */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+
+/* Smooth transitions */
+.sidebar-link {
+  transition: all 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Status badge colors */
+.badge-activo { background: #dcfce7; color: #166534; }
+.badge-reparacion { background: #fef9c3; color: #854d0e; }
+.badge-baja { background: #fee2e2; color: #991b1b; }
+.badge-pendiente { background: #fef9c3; color: #854d0e; }
+.badge-revision { background: #dbeafe; color: #1e40af; }
+.badge-resuelto { background: #dcfce7; color: #166534; }

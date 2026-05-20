@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react'; // Importar las funciones useState y useEffect
 import axios from 'axios'; // Importar axios para realizar peticiones HTTP
-import { Button, Tooltip, TextField, ListItemText, ListItem, List, Select, MenuItem } from '@mui/material';
-import UnidadesModal from './UnidadesModal';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_URL;
+const API_URL = 'http://localhost:5090';
 
 
-const NodeFrom = ({ onAddNodo }) => {
+const NodeFrom = ({ onAddNodo, onClose }) => {
     const { user } = useContext(AuthContext);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({ // Estado para almacenar los datos del formulario
@@ -35,6 +41,8 @@ const NodeFrom = ({ onAddNodo }) => {
     const [materiales, setMateriales] = useState([]);
     const [imageFiles, setImageFiles] = useState([]); // Estado para almacenar los archivos de imágenes
     const [unidades, setUnidades] = useState([]); // Estado para almacenar las unidades
+    const [searchUnidadForm, setSearchUnidadForm] = useState("");
+    const unidadesFiltradasForm = unidades.filter(u => u.nombre.toLowerCase().includes(searchUnidadForm.toLowerCase()));
     const [showObservacionesModal, setShowObservacionesModal] = useState(false); // 
     const [showMaterialesModal, setShowMaterialesModal] = useState(false); // 
     const [observacionesUsuario, setObservacionesUsuario] = useState(''); // 
@@ -43,7 +51,6 @@ const NodeFrom = ({ onAddNodo }) => {
     const [observacionDestino, setObservacionDestino] = useState(''); // 'mantenimiento', 'otro', 'ambos'
     const [observacionEditada, setObservacionEditada] = useState(false);
     const [observacionAnterior, setObservacionAnterior] = useState('');
-    const [showUnidadesModal, setShowUnidadesModal] = useState(false);
 
     const fetchUnidades = async () => {
         try {
@@ -156,26 +163,6 @@ const NodeFrom = ({ onAddNodo }) => {
         );
     };
 
-    // Modificar el TextField de cantidad para que cambie según la unidad
-    const renderCantidadInput = () => {
-        const materialSeleccionado = materiales.find(m => m.Id === materialActual.id);
-        const esPiezas = materialSeleccionado?.UnidadMedida === 'piezas';
-
-        return (
-            <TextField
-                type="number"
-                label="Cantidad"
-                value={materialActual.cantidad}
-                onChange={handleCantidadChange}
-                inputProps={{
-                    min: 0.1,
-                    step: esPiezas ? 1 : 0.1 // Paso diferente según unidad
-                }}
-                style={{ width: '120px' }}
-                error={esPiezas && !Number.isInteger(Number(materialActual.cantidad))}
-            />
-        );
-    };
 
     // Manejar cambios en los campos del formulario
     const handleChange = (e) => {
@@ -364,6 +351,9 @@ const NodeFrom = ({ onAddNodo }) => {
             if (onAddNodo) {
                 await onAddNodo(); // Asegúrate de esperar la actualización
             }
+            if (onClose) {
+                onClose();
+            }
         } catch (error) {
             console.error('Error al crear el nodo:', error);
             alert('Error al crear el nodo');
@@ -383,468 +373,514 @@ const NodeFrom = ({ onAddNodo }) => {
     };
 
     return (
-        <>
-            <form onSubmit={handleSubmit}> {/* Agregar el manejador de envío del formulario */}
-                <h2>Registrar Nuevo Nodo</h2>
-                {/* Campos del formulario */}
-                <div>
-                    <label>Unidad:</label>
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        <select
-                            name="Unidad" // Nombre del campo
-                            value={formData.Unidad} // Valor del campo
-                            onChange={handleChange} // Manejar cambios en el campo
-                            required // Campo requerido
-                            style={{ flexGrow: 1 }}
-                            disabled={!!(user?.id_unidad && user.id_unidad !== 0)}
-                        >
-                            {(!user?.id_unidad || user.id_unidad === 0) && (
-                                <option value="">Seleccione una unidad</option>
-                            )}
-                            {unidades.map((unidad) => ( // Mapear las unidades para mostrarlas en el select
-                                <option key={unidad.nombre} value={unidad.nombre}> {/* Opción de la unidad con su referencia */}
-                                    {unidad.nombre} {/* Nombre de la unidad */}
-                                </option>
-                            ))}
-                        </select>
-                        <Button variant="outlined" size="small" onClick={() => setShowUnidadesModal(true)}>
-                            Gestionar
-                        </Button>
-                    </div>
-                </div>
-                <div>
-                    <label>Ubicación:</label>
-                    <input
-                        style={{ width: '100%' }}
-                        name="Ubicacion" // Nombre del campo
-                        value={formData.Ubicacion} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        label="Ubicación del nodo"
-                        placeholder='Ingresa la ubicación del nodo'
-                    />
-                </div>
-                <div>
-                    <label>IP del Switch:</label>
-                    <input
-                        name="IpSwitch" // Nombre del campo
-                        value={formData.IpSwitch} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        required // Campo requerido
-                        placeholder="Ingresa la dirección IP del Switch"
-                    />
-                </div>
-                <div>
-                    <label>Puerto:</label>
-                    <input
-                        name="Puerto" // Nombre del campo
-                        value={formData.Puerto} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        required // Campo requerido
-                        placeholder="Ingresa el puerto al que esta conectado el cable"
-                    />
-                </div>
-                <div>
-                    <label>Longitud:</label>
-                    <input
-                        name="Longitud" // Nombre del campo
-                        type="number" // Tipo de campo
-                        min="0" // Valor mínimo
-                        step="0.01"   // Permite decimales
-                        value={formData.Longitud || '0'} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        //required // Campo requerido
-                        placeholder="Ingresa la longitud de su cable"
-                    />
-                </div>
-                <div>
-                    <label>Área:</label>
-                    <input
-                        name="Area" // Nombre del campo
-                        value={formData.Area} // Valor del campo
-                        placeholder='Ingresa el área del nodo'
-                        onChange={handleChange} // Manejar cambios en el campo
-                    />
-                </div>
-                <div>
-                    <label>Categoría del Cable:</label>
-                    <select
-                        name='CategoriaCable' // Nombre del campo
-                        value={formData.CategoriaCable || ''} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        required // Campo requerido
-                    >
-                        <option value='Sin categoría'>Seleccione una categoría</option> {/* Opción por defecto */}
-                        <option value='5'>Categoría 5</option> {/* Opciones de categoría */}
-                        <option value='5e'>Categoría 5e</option> {/* Opciones de categoría */}
-                        <option value='6'>Categoría 6</option> {/* Opciones de categoría */}
-                        <option value='6A'>Categoría 6A</option> {/* Opciones de categoría */}
-                    </select>
-                </div>
-                <div>
-                    <label>Año de Instalación:</label>
-                    <input
-                        name="AnioInstalacion" // Nombre del campo
-                        type="number" // Tipo de campo
-                        min="0"
-                        max={new Date().getFullYear()} // Año actual
-                        value={formData.AnioInstalacion || '0'} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        //required // Campo requerido
-                        placeholder="Ingresa el año de instalación del nodo"
-                    />
-                </div>
-                <div>
-                    <label>Estado del Cable:</label>
-                    <select
-                        name='EstadoCable' // Nombre del campo
-                        value={formData.EstadoCable || ''} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        required // Campo requerido
-                    >
-                        <option value='Sin estado'>Seleccione un estado</option> {/* Opción por defecto */}
-                        <option value='Bueno'>Bueno</option> {/* Opciones de estado */}
-                        <option value='Regular'>Regular</option> {/* Opciones de estado */}
-                        <option value='Malo'>Malo</option> {/* Opciones de estado */}
-                    </select>
-                </div>
-                <div>
-                    <label>Nodos faltantes:</label>
-                    <input
-                        name="Nodos_faltantes" // Nombre del campo
-                        type="number" // Tipo de campo
-                        min="0"
-                        max="99999"
-                        value={formData.Nodos_faltantes || '0'} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        required // Campo requerido
-                        placeholder="Ingresa el número de nodos faltantes"
-                    />
-                </div>
-                <div>
-                    <label>Observaciones:</label>
-                    <textarea
-                        name="Observaciones"
-                        value={formData.Observaciones} // Valor del campo
-                        onChange={handleChange} // Manejar cambios en el campo
-                        onBlur={handleObservacionesBlur}
-                        style={{ height: '65px', width: '99%', resize: 'none', borderRadius: '5px' }}
-                        placeholder="Ingresa las observaciones del nodo"
-                    //required
-                    />
-                </div>
-                <div>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '10px' }}>
-                        Requiere mantenimiento
-                        <input
-                            style={{ width: '20px', height: '20px' }}
-                            type="checkbox" // Tipo de campo
-                            name="Atencion" // Nombre del campo
-                            value={formData.Atencion} // Valor actual del checkbox
-                            onChange={handleChange} // Manejar cambios en el checkbox
-                        />
-                    </label>
-                </div>
-                <div>
-                    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', gap: '10px' }}>
-                        Requiere otro tipo de atención
-                        <input
-                            style={{ width: '20px', height: '20px' }}
-                            type="checkbox" // Tipo de campo
-                            name="OtraAtencion" // Nombre del campo
-                            value={formData.OtraAtencion} // Valor actual del checkbox
-                            onChange={handleChange} // Manejar cambios en el checkbox
-                        />
-                    </label>
-                </div>
-                <div>
-                    <br />
-                    <Tooltip title='Registrar materiales para el nodo'>
-                        <Button
-                            size="large"
-                            variant="contained"
-                            onClick={() => (setShowMaterialesModal(true))}
-                        >
-                            Agregar materiales necesarios
-                        </Button>
-                    </Tooltip>
-                    {/* Mostrar resumen de materiales seleccionados */}
-                    {materialesSeleccionados.length > 0 && (
-                        <div style={{ margin: '10px 0', padding: '10px', border: '1px solid #ddd' }}>
-                            <h4>Materiales a solicitar:</h4>
-                            <List>
-                                {materialesSeleccionados.map(material => (
-                                    <ListItem
-                                        key={material.id}
-                                        secondaryAction={
-                                            <Button onClick={() => eliminarMaterial(material.id)} style={{ backgroundColor: 'red', color: 'white' }}>
-                                                Eliminar
-                                            </Button>
-                                        }
-                                    >
-                                        <ListItemText
-                                            primary={`${material.nombre}`}
-                                            secondary={`${material.cantidad} ${material.unidad}`}
-                                        />
-                                    </ListItem>
-                                ))}
-                            </List>
-                        </div>
-                    )}
-                    <br />
-                    <br />
-                </div>
-                <div>
-                    <label>Imágenes:</label>
-                    <input
-                        type="file" // Tipo de campo
-                        name="images" // Nombre del campo
-                        multiple // Permitir la selección de múltiples archivos
-                        onChange={handleFileChange} // Manejar cambios en la selección de archivos
-                    />
-                </div>
-                {!EstaVacio(imageFiles) && (
-                    <div>
-                        <h4>Imágenes Seleccionadas:</h4>
-                        <ul>
-                            {imageFiles.map((file, index) => ( // Mostrar los archivos seleccionados
-                                <li key={index}> {/* Clave única para cada archivo */}
-                                    {file.name} {/* Mostrar el nombre del archivo */}
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                <Tooltip title='Registrar nuevo nodo'>
-                    <Button
-                        size="large"
-                        variant="contained"
-                        type="submit"
-                    >
-                        Registrar
-                    </Button> {/* Botón para enviar el formulario */}
-                </Tooltip>
-
-                {/* Modal para seleccionar destino de las observaciones */}
-                {showObservacionesDestinoModal && (
-                    <div
-                        className="modal-overlay"
-                        onClick={() => {
-                            setShowObservacionesDestinoModal(false);
-                            // Revertir a la observación anterior si el usuario cancela
-                            setFormData({
-                                ...formData,
-                                Observaciones: observacionAnterior
-                            });
-                        }}
-                    >
-                        <div
-                            className="modal"
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ width: '100%', maxWidth: '500px', padding: '20px' }}
-                        >
-                            <h3>¿A qué tipo de atención corresponde esta observación?</h3>
-                            <p>{observacionesUsuario}</p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', margin: '20px 0' }}>
-                                <Button
-                                    variant="contained"
-                                    onClick={() => handleObservacionDestino('mantenimiento')}
-                                >
-                                    Solo mantenimiento
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    onClick={() => handleObservacionDestino('otro')}
-                                >
-                                    Solo otro tipo de atención
-                                </Button>
-                                <Button
-                                    variant="contained"
-                                    onClick={() => handleObservacionDestino('ambos')}
-                                >
-                                    Ambos tipos de atención
-                                </Button>
-                            </div>
-                            <Button
-                                variant="outlined"
-                                onClick={() => {
-                                    setShowObservacionesDestinoModal(false);
-                                    // Revertir a la observación anterior si el usuario cancela
-                                    setFormData({
-                                        ...formData,
-                                        Observaciones: observacionAnterior
-                                    });
-                                }}
+        <div className="w-full">
+            <form onSubmit={handleSubmit} className="space-y-6">
+                
+                {/* SECCIÓN 1: Ubicación y Unidad */}
+                <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200/60 space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                        <i className="fas fa-map-marker-alt text-emerald-600"></i> Información de Ubicación
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Unidad:</Label>
+                            <Select
+                                value={formData.Unidad || ''}
+                                onValueChange={(value) => handleChange({ target: { name: 'Unidad', value, type: 'text' } })}
+                                disabled={!!(user?.id_unidad && user.id_unidad !== 0)}
                             >
-                                Cancelar
-                            </Button>
+                                <SelectTrigger className="w-full bg-white border border-slate-200">
+                                    <SelectValue placeholder="Seleccione una unidad">
+                                        {formData.Unidad || 'Seleccione una unidad'}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <div className="p-2 sticky top-0 bg-white z-10 border-b border-slate-100">
+                                        <Input
+                                            placeholder="Buscar unidad..."
+                                            value={searchUnidadForm}
+                                            onChange={(e) => setSearchUnidadForm(e.target.value)}
+                                            onKeyDown={(e) => e.stopPropagation()}
+                                            className="h-8 text-xs bg-slate-50 focus-visible:ring-emerald-500"
+                                        />
+                                    </div>
+                                    {(!user?.id_unidad || user.id_unidad === 0) && (
+                                        <SelectItem value=" ">Seleccione una unidad</SelectItem>
+                                    )}
+                                    {unidadesFiltradasForm.map((unidad) => (
+                                        <SelectItem key={unidad.nombre} value={unidad.nombre}>
+                                            {unidad.nombre}
+                                        </SelectItem>
+                                    ))}
+                                    {unidadesFiltradasForm.length === 0 && (
+                                        <div className="py-4 text-center text-xs text-slate-500">No se encontraron unidades</div>
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Ubicación:</Label>
+                            <Input
+                                name="Ubicacion"
+                                value={formData.Ubicacion}
+                                onChange={handleChange}
+                                placeholder="Ej: Pasillo principal, sótano"
+                                className="bg-white border border-slate-200"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Área:</Label>
+                            <Input
+                                name="Area"
+                                value={formData.Area}
+                                onChange={handleChange}
+                                placeholder="Ej: Archivos Clínicos, Farmacia"
+                                className="bg-white border border-slate-200"
+                            />
                         </div>
                     </div>
-                )}
+                </div>
 
-                {/* Modal para ingresar observaciones */}
-                {showObservacionesModal && (
-                    <div
-                        className="modal-overlay"
-                        onClick={() => {
-                            // Revertir el cambio si el usuario cancela
+                {/* SECCIÓN 2: Conectividad y Switch */}
+                <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200/60 space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                        <i className="fas fa-server text-emerald-600"></i> Red y Conectividad
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">IP del Switch:</Label>
+                            <Input
+                                name="IpSwitch"
+                                value={formData.IpSwitch}
+                                onChange={handleChange}
+                                required
+                                placeholder="Ej: 172.19.45.253"
+                                className="bg-white border border-slate-200 font-mono"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Puerto:</Label>
+                            <Input
+                                name="Puerto"
+                                value={formData.Puerto}
+                                onChange={handleChange}
+                                required
+                                placeholder="Ej: Gi1/0/24 o 15"
+                                className="bg-white border border-slate-200 font-mono"
+                            />
+                        </div>
+                    </div>
+                </div>
 
-                            // Actualizar el estado del formulario para desmarcar el checkbox
-                            setFormData((prevFormData) => ({
-                                ...prevFormData,
-                                [campoCambiado]: false, // Revertir el estado del checkbox
-                            }));
+                {/* SECCIÓN 3: Especificaciones e Infraestructura */}
+                <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200/60 space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                        <i className="fas fa-ethernet text-emerald-600"></i> Especificaciones del Cable
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Categoría del Cable:</Label>
+                            <Select
+                                value={formData.CategoriaCable || ''}
+                                onValueChange={(value) => handleChange({ target: { name: 'CategoriaCable', value, type: 'text' } })}
+                                required
+                            >
+                                <SelectTrigger className="bg-white border border-slate-200">
+                                    <SelectValue placeholder="Seleccione categoría">
+                                        {formData.CategoriaCable && formData.CategoriaCable !== 'Sin categoría' 
+                                            ? (formData.CategoriaCable.startsWith('Categoría') ? formData.CategoriaCable : `Categoría ${formData.CategoriaCable}`) 
+                                            : 'Seleccione categoría'}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Sin categoría">Seleccione una categoría</SelectItem>
+                                    <SelectItem value="5">Categoría 5</SelectItem>
+                                    <SelectItem value="5e">Categoría 5e</SelectItem>
+                                    <SelectItem value="6">Categoría 6</SelectItem>
+                                    <SelectItem value="6A">Categoría 6A</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Longitud (m):</Label>
+                            <Input
+                                name="Longitud"
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={formData.Longitud || '0'}
+                                onChange={handleChange}
+                                placeholder="Longitud en metros"
+                                className="bg-white border border-slate-200"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Año de Instalación:</Label>
+                            <Input
+                                name="AnioInstalacion"
+                                type="number"
+                                min="0"
+                                max={new Date().getFullYear().toString()}
+                                value={formData.AnioInstalacion || '0'}
+                                onChange={handleChange}
+                                placeholder="Año de instalación"
+                                className="bg-white border border-slate-200"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-slate-600 font-medium">Estado del Cable:</Label>
+                            <Select
+                                value={formData.EstadoCable || ''}
+                                onValueChange={(value) => handleChange({ target: { name: 'EstadoCable', value, type: 'text' } })}
+                                required
+                            >
+                                <SelectTrigger className="bg-white border border-slate-200">
+                                    <SelectValue placeholder="Seleccione un estado">
+                                        {formData.EstadoCable && formData.EstadoCable !== 'Sin estado' ? formData.EstadoCable : 'Seleccione un estado'}
+                                    </SelectValue>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Sin estado">Seleccione un estado</SelectItem>
+                                    <SelectItem value="Bueno">Bueno</SelectItem>
+                                    <SelectItem value="Regular">Regular</SelectItem>
+                                    <SelectItem value="Malo">Malo</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                </div>
 
-                            setShowObservacionesModal(false); // Cerrar la modal
-                            setObservacionesUsuario(''); // Limpiar el campo de observaciones
-                        }} // Cierra el modal al hacer clic en el overlay
-                    >
-                        <div
-                            className="modal"
-                            onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                        > {/* Contenedor del modal */}
-                            <h3>Observaciones adicionales</h3>
+                {/* SECCIÓN 4: Inventario y Observaciones */}
+                <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200/60 space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                        <i className="fas fa-list text-emerald-600"></i> Inventario y Observaciones
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        <div className="space-y-2 sm:col-span-1">
+                            <Label className="text-slate-600 font-medium">Nodos faltantes:</Label>
+                            <Input
+                                name="Nodos_faltantes"
+                                type="number"
+                                min="0"
+                                max="99999"
+                                value={formData.Nodos_faltantes || '0'}
+                                onChange={handleChange}
+                                required
+                                placeholder="Nodos requeridos"
+                                className="bg-white border border-slate-200"
+                            />
+                        </div>
+                        <div className="space-y-2 sm:col-span-2">
+                            <Label className="text-slate-600 font-medium">Observaciones:</Label>
+                            <Textarea
+                                name="Observaciones"
+                                value={formData.Observaciones}
+                                onChange={handleChange}
+                                onBlur={handleObservacionesBlur}
+                                className="resize-none h-10 bg-white border border-slate-200 min-h-[40px] focus:min-h-[80px] transition-all duration-200"
+                                placeholder="Ingrese observaciones o detalles adicionales sobre este nodo"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                {/* SECCIÓN 5: Reporte de Incidencias / Mantenimiento */}
+                <div className="bg-slate-50/50 p-5 rounded-xl border border-slate-200/60 space-y-4">
+                    <h3 className="text-sm font-semibold text-slate-700 flex items-center gap-2 border-b border-slate-200/50 pb-2">
+                        <i className="fas fa-exclamation-triangle text-emerald-600"></i> Reporte y Estatus de Atención
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-200 ${
+                            formData.Atencion 
+                                ? 'bg-red-50/40 border-red-200 text-red-900 shadow-2xs' 
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50/80'
+                        }`}>
+                            <input
+                                type="checkbox"
+                                name="Atencion"
+                                checked={formData.Atencion}
+                                onChange={(e) => handleChange({ target: { name: 'Atencion', value: e.target.checked, type: 'checkbox', checked: e.target.checked } })}
+                                className="h-5 w-5 rounded border-slate-300 text-red-600 focus:ring-red-500 mt-0.5 transition-colors"
+                            />
                             <div>
-                                <textarea
-                                    placeholder="Ingrese las observaciones del cambio..."
-                                    value={observacionesUsuario}
-                                    onChange={(e) => setObservacionesUsuario(e.target.value)}
-                                    style={{ height: '128px', width: '100%', resize: 'none', borderRadius: '5px' }}
+                                <span className="text-sm font-semibold block">Requiere Mantenimiento</span>
+                                <span className="text-xs text-slate-500 block mt-0.5">Activar si el nodo presenta daño físico, falsos contactos o requiere mantenimiento correctivo.</span>
+                            </div>
+                        </label>
+
+                        <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-200 ${
+                            formData.OtraAtencion 
+                                ? 'bg-amber-50/40 border-amber-200 text-amber-900 shadow-2xs' 
+                                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50/80'
+                        }`}>
+                            <input
+                                type="checkbox"
+                                name="OtraAtencion"
+                                checked={formData.OtraAtencion}
+                                onChange={(e) => handleChange({ target: { name: 'OtraAtencion', value: e.target.checked, type: 'checkbox', checked: e.target.checked } })}
+                                className="h-5 w-5 rounded border-slate-300 text-amber-600 focus:ring-amber-500 mt-0.5 transition-colors"
+                            />
+                            <div>
+                                <span className="text-sm font-semibold block">Requiere Otra Atención</span>
+                                <span className="text-xs text-slate-500 block mt-0.5">Activar si requiere reubicación, cambios de velocidad, asignaciones de VLAN u otro tipo de atención administrativa.</span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        {/* Botón de Materiales */}
+                        <div className="space-y-3">
+                            <Label className="text-slate-700 font-semibold text-sm block">Materiales Requeridos:</Label>
+                            <div className="flex flex-col gap-2">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="border-slate-200 bg-white text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2 h-10 px-4 rounded-lg shadow-2xs font-medium transition-all w-full sm:w-fit"
+                                    onClick={() => setShowMaterialesModal(true)}
+                                >
+                                    <i className="fas fa-tools text-emerald-600"></i>
+                                    <span>Gestionar Materiales</span>
+                                </Button>
+                                {materialesSeleccionados.length > 0 ? (
+                                    <div className="p-3 bg-emerald-50/40 border border-emerald-100 rounded-lg">
+                                        <h4 className="font-bold text-xs text-emerald-800 uppercase tracking-wider mb-2">Materiales seleccionados:</h4>
+                                        <ul className="space-y-1 text-xs text-emerald-700">
+                                            {materialesSeleccionados.map(material => (
+                                                <li key={material.id} className="flex justify-between items-center py-1 border-b border-emerald-100/50 last:border-0">
+                                                    <span>{material.nombre} ({material.cantidad} {material.unidad})</span>
+                                                    <button type="button" onClick={() => eliminarMaterial(material.id)} className="text-red-500 hover:text-red-700 ml-2">
+                                                        <i className="fas fa-times-circle"></i>
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic">No se han registrado materiales para este nodo.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Evidencia Fotográfica */}
+                        <div className="space-y-3">
+                            <Label className="text-slate-700 font-semibold text-sm block">Evidencia Fotográfica (Imágenes):</Label>
+                            <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-white hover:bg-slate-50/50 transition-colors flex flex-col items-center justify-center cursor-pointer relative group min-h-[90px]">
+                                <input
+                                    type="file"
+                                    name="images"
+                                    multiple
+                                    onChange={handleFileChange}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                                 />
+                                <div className="text-center space-y-1 flex flex-col items-center">
+                                    <div className="h-8 w-8 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-center text-slate-400 group-hover:text-slate-500 group-hover:border-slate-300 shadow-2xs transition-all mb-1">
+                                        <i className="fas fa-cloud-upload-alt text-xs"></i>
+                                    </div>
+                                    <p className="text-xs font-semibold text-slate-700">Subir imágenes de evidencia</p>
+                                    <p className="text-[10px] text-slate-400">Haga clic o arrastre archivos aquí</p>
+                                </div>
                             </div>
-                            <div>
-                                <Button
-                                    variant="contained"
-                                    style={{ marginRight: '10px' }}
-                                    onClick={() => {
-                                        // Guardar las observaciones en el estado del formulario
-                                        if (campoCambiado === 'Atencion') {
-                                            setFormData({
-                                                ...formData,
-                                                ObservacionesUsuarioAtencion: observacionesUsuario,
-                                            });
-                                        } else if (campoCambiado === 'OtraAtencion') {
-                                            setFormData({
-                                                ...formData,
-                                                ObservacionesUsuarioOtraAtencion: observacionesUsuario,
-                                            });
-                                        }
-                                        setShowObservacionesModal(false); // Cerrar la modal
-                                        setObservacionesUsuario(''); // Limpiar el campo de observaciones
-                                    }}
-                                >
-                                    Aceptar
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => {
-                                        // Revertir el cambio si el usuario cancela
-
-                                        // Actualizar el estado del formulario para desmarcar el checkbox
-                                        setFormData((prevFormData) => ({
-                                            ...prevFormData,
-                                            [campoCambiado]: false, // Revertir el estado del checkbox
-                                        }));
-
-                                        setShowObservacionesModal(false); // Cerrar la modal
-                                        setObservacionesUsuario(''); // Limpiar el campo de observaciones
-                                    }}
-                                >
-                                    Cancelar
-                                </Button>
-                            </div>
+                            {!EstaVacio(imageFiles) && (
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                                    <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">Imágenes seleccionadas ({imageFiles.length}):</h5>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                        {imageFiles.map((file, index) => {
+                                            const url = URL.createObjectURL(file);
+                                            return (
+                                                <div key={index} className="relative group rounded-lg overflow-hidden border border-slate-200 shadow-2xs bg-white">
+                                                    <img 
+                                                        src={url} 
+                                                        className="w-full h-20 object-cover" 
+                                                        onLoad={() => URL.revokeObjectURL(url)}
+                                                    />
+                                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                        <span className="text-[9px] text-white text-center px-1 truncate w-full">{file.name}</span>
+                                                    </div>
+                                                    <Button 
+                                                        type="button"
+                                                        size="icon" 
+                                                        variant="destructive" 
+                                                        className="absolute top-1 right-1 h-5 w-5 rounded-full shadow-md bg-red-600 hover:bg-red-700 text-white animate-fade-in" 
+                                                        onClick={() => {
+                                                            const newFiles = [...imageFiles];
+                                                            newFiles.splice(index, 1);
+                                                            setImageFiles(newFiles);
+                                                        }}
+                                                    >
+                                                        <i className="fas fa-times text-[10px]"></i>
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
-                )}
+                </div>
 
-                {/* Modal de materiales */}
-                {showMaterialesModal && (
-                    <div
-                        className="modal-overlay"
-                        onClick={() => setShowMaterialesModal(false)} // Cierra el modal al hacer clic en el overlay
-                    >
-                        <div
-                            className="modal"
-                            onClick={(e) => e.stopPropagation()} // Evita que el clic dentro del modal cierre el overlay
-                            style={{ width: '100%', maxWidth: '500px', padding: '20px' }}
-                        > {/* Contenedor del modal */}
-                            <h3>Agregar Materiales Necesarios</h3>
-
-                            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', height: '40px' }}>
-                                <Select
-                                    value={materialActual.id}
-                                    onChange={handleMaterialChange}
-                                    displayEmpty
-                                    fullWidth
+                {/* BOTONES DE ACCIÓN PRINCIPALES */}
+                <div className="pt-6 flex justify-end gap-3 border-t border-slate-200">
+                    {onClose && (
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={onClose}
+                            className="h-10 px-5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-lg font-medium"
+                        >
+                            Cancelar
+                        </Button>
+                    )}
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Button 
+                                    type="submit" 
+                                    disabled={isSubmitting} 
+                                    className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg shadow-sm transition-all flex items-center gap-2"
                                 >
-                                    <MenuItem value="">Seleccione un material</MenuItem>
-                                    {materiales.map(material => (
-                                        <MenuItem key={material.Id} value={material.Id}>
-                                            {material.Nombre} ({material.UnidadMedida})
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-
-                                {renderCantidadInput()}
-
-                                <Button
-                                    variant="contained"
-                                    onClick={agregarMaterial}
-                                    disabled={!materialActual.id}
-                                >
-                                    Agregar
+                                    <i className="fas fa-save"></i> Registrar Nodo
                                 </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Registrar nuevo nodo en el sistema</TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+                
+                {/* Modales incrustados temporales */}
+                <Dialog open={showObservacionesDestinoModal} onOpenChange={(val) => {
+                    if (!val) {
+                        setShowObservacionesDestinoModal(false);
+                        setFormData({...formData, Observaciones: observacionAnterior});
+                    }
+                }}>
+                    <DialogContent className="max-w-md bg-white p-6 rounded-xl border shadow-lg">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold">¿A qué tipo de atención corresponde esta observación?</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-2">
+                            <p className="text-slate-600 mb-6 p-3 bg-slate-100 rounded-lg border text-sm">{observacionesUsuario}</p>
+                            <div className="flex flex-col gap-3 mb-6">
+                                <Button variant="outline" className="border-blue-200 hover:bg-blue-50 text-left justify-start" onClick={() => handleObservacionDestino('mantenimiento')}>Solo mantenimiento</Button>
+                                <Button variant="outline" className="border-amber-200 hover:bg-amber-50 text-left justify-start" onClick={() => handleObservacionDestino('otro')}>Solo otro tipo de atención</Button>
+                                <Button variant="outline" className="border-purple-200 hover:bg-purple-50 text-left justify-start" onClick={() => handleObservacionDestino('ambos')}>Ambos tipos de atención</Button>
                             </div>
+                            <div className="flex justify-end">
+                                <Button variant="ghost" onClick={() => {
+                                    setShowObservacionesDestinoModal(false);
+                                    setFormData({...formData, Observaciones: observacionAnterior});
+                                }}>Cancelar</Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
 
-                            <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '20px' }}>
-                                <List>
-                                    {materialesSeleccionados.map(material => (
-                                        <ListItem
-                                            key={material.id}
-                                            secondaryAction={
-                                                <Button edge="end" onClick={() => eliminarMaterial(material.id)} variant='contained' className='delete-button'>
-                                                    Eliminar material
+                <Dialog open={showObservacionesModal} onOpenChange={(val) => {
+                    if (!val) {
+                        setFormData((prev) => ({...prev, [campoCambiado]: false}));
+                        setShowObservacionesModal(false);
+                        setObservacionesUsuario('');
+                    }
+                }}>
+                    <DialogContent className="max-w-md bg-white p-6 rounded-xl border shadow-lg">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold">Observaciones adicionales</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-2">
+                            <Textarea
+                                placeholder="Ingrese las observaciones del cambio..."
+                                value={observacionesUsuario}
+                                onChange={(e) => setObservacionesUsuario(e.target.value)}
+                                className="mb-6 h-32"
+                            />
+                            <div className="flex justify-end gap-3">
+                                <Button variant="ghost" onClick={() => {
+                                    setFormData((prev) => ({...prev, [campoCambiado]: false}));
+                                    setShowObservacionesModal(false);
+                                    setObservacionesUsuario('');
+                                }}>Cancelar</Button>
+                                <Button className="bg-emerald-700 hover:bg-emerald-800 text-white" onClick={() => {
+                                    if (campoCambiado === 'Atencion') {
+                                        setFormData({...formData, ObservacionesUsuarioAtencion: observacionesUsuario});
+                                    } else if (campoCambiado === 'OtraAtencion') {
+                                        setFormData({...formData, ObservacionesUsuarioOtraAtencion: observacionesUsuario});
+                                    }
+                                    setShowObservacionesModal(false);
+                                    setObservacionesUsuario('');
+                                }}>Aceptar</Button>
+                            </div>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={showMaterialesModal} onOpenChange={setShowMaterialesModal}>
+                    <DialogContent className="max-w-lg bg-white p-6 rounded-xl border shadow-lg">
+                        <DialogHeader>
+                            <DialogTitle className="text-lg font-bold">Agregar Materiales Necesarios</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-2">
+                            <div className="flex gap-2 items-end mb-6">
+                                <div className="flex-1 space-y-2">
+                                    <Label>Material</Label>
+                                    <Select value={materialActual.id} onValueChange={(value) => handleMaterialChange({target: {value}})}>
+                                        <SelectTrigger className="bg-white">
+                                            <SelectValue placeholder="Seleccione un material" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value=" ">Seleccione un material</SelectItem>
+                                            {materiales.map(material => (
+                                                <SelectItem key={material.Id} value={material.Id}>
+                                                    {material.Nombre} ({material.UnidadMedida})
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="w-24 space-y-2">
+                                    <Label>Cantidad</Label>
+                                    <Input
+                                        type="number"
+                                        value={materialActual.cantidad}
+                                        onChange={(e) => handleCantidadChange({target: {value: e.target.value}})}
+                                        className="bg-white"
+                                    />
+                                </div>
+                                <Button type="button" onClick={agregarMaterial} disabled={!materialActual.id} className="bg-blue-600 hover:bg-blue-700 text-white">Agregar</Button>
+                            </div>
+                            
+                            <div className="max-h-60 overflow-y-auto mb-6 bg-slate-50 rounded-lg p-2 border">
+                                {materialesSeleccionados.length === 0 ? (
+                                    <p className="text-center text-slate-500 py-4 text-sm">No hay materiales seleccionados</p>
+                                ) : (
+                                    <ul className="space-y-2">
+                                        {materialesSeleccionados.map(material => (
+                                            <li key={material.id} className="flex justify-between items-center p-3 border bg-white rounded shadow-sm">
+                                                <div>
+                                                    <p className="font-medium text-sm">{material.nombre}</p>
+                                                    <p className="text-xs text-slate-500">{material.cantidad} {material.unidad}</p>
+                                                </div>
+                                                <Button type="button" variant="destructive" size="sm" onClick={() => eliminarMaterial(material.id)}>
+                                                    <i className="fas fa-trash"></i>
                                                 </Button>
-                                            }
-                                        >
-                                            <ListItemText
-                                                primary={`${material.nombre}`}
-                                                secondary={`${material.cantidad} ${material.unidad}`}
-                                            />
-                                        </ListItem>
-                                    ))}
-                                </List>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                                <Button
-                                    variant="contained"
-                                    onClick={() => setShowMaterialesModal(false)}
-                                >
-                                    Guardar
-                                </Button>
-                                <Button
-                                    variant="outlined"
-                                    onClick={() => {
-                                        setMaterialesSeleccionados([])
-                                        setShowMaterialesModal(false)
-                                    }}
-                                >
-                                    Cancelar
-                                </Button>
+                            <div className="flex justify-end gap-3 pt-4 border-t">
+                                <Button variant="outline" onClick={() => {
+                                    setMaterialesSeleccionados([]);
+                                    setShowMaterialesModal(false);
+                                }}>Cancelar</Button>
+                                <Button type="button" onClick={() => setShowMaterialesModal(false)} className="bg-emerald-700 hover:bg-emerald-800 text-white">Guardar Selección</Button>
                             </div>
                         </div>
-                    </div>
-                )}
+                    </DialogContent>
+                </Dialog>
             </form>
-
-            <UnidadesModal
-                open={showUnidadesModal}
-                onClose={() => setShowUnidadesModal(false)}
-                onUnidadesChange={fetchUnidades}
-            />
-        </>
+        </div>
     );
 };
 
-export default NodeFrom; // Exportar el componente NodeFrom
+export default NodeFrom;
