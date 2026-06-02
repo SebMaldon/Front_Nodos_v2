@@ -194,9 +194,11 @@ export default function GestionUnidades() {
 
     // Filter logic
     const filteredUnidades = unidades.filter(u => {
-        const matchesSearch = normalize(u.nombre).includes(normalize(searchTerm)) || 
-                              normalize(u.ref).includes(normalize(searchTerm)) ||
-                              normalize(u.ip).includes(normalize(searchTerm));
+        const term = searchTerm.trim();
+        const matchesSearch = !term ||
+                              normalize(u.nombre).includes(normalize(term)) || 
+                              normalize(String(u.ref)).includes(normalize(term)) ||
+                              normalize(u.ip).includes(normalize(term));
         const matchesZona = filtroZona === 'TODAS' || 
                             (filtroZona === 'SIN_ZONA' && (u.zona === null || u.zona === undefined || String(u.zona).trim() === '')) || 
                             String(u.zona) === filtroZona;

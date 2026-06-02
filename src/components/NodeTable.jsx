@@ -586,7 +586,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
         // Apply Search Term
         if (searchTerm.trim()) {
-            const term = searchTerm.toLowerCase();
+            const term = searchTerm.toLowerCase().trim();
             result = result.filter(n => 
                 (n.Ubicacion && n.Ubicacion.toLowerCase().includes(term)) ||
                 (n.Unidad && n.Unidad.toLowerCase().includes(term)) ||

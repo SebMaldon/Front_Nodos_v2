@@ -297,7 +297,7 @@ const tablaRegistros = () => {
 
         // Apply Search Term
         if (searchTerm.trim()) {
-            const term = searchTerm.toLowerCase();
+            const term = searchTerm.toLowerCase().trim();
             result = result.filter(nodo => 
                 (nodo.Ubicacion && nodo.Ubicacion.toLowerCase().includes(term)) ||
                 (nodo.Area && nodo.Area.toLowerCase().includes(term)) ||
@@ -384,7 +384,7 @@ const tablaRegistros = () => {
 
             // Fetch ALL records at once — client-side pagination handles display
             const response = await axios.get(`${API_URL}/api/nodos`, {
-                params: { ...params, page: 1, limit: 1000 },
+                params: { ...params, page: 1, limit: 9999 },
             });
 
             setFilteredNodos(response.data.nodos);
