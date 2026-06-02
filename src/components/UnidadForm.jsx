@@ -4,8 +4,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useNotifications } from '../context/NotificationContext';
 
-const UnidadForm = ({ onAddUnidad, onClose }) => {
+const UnidadForm = ({ onAddUnidad, onClose, esAdminGlobal = true, userZona }) => {
+    const ENLACE_MAP = {
+        1: 'Fibra Óptica',
+        2: 'Cobre',
+        3: 'Satelital',
+        4: 'Punto a punto',
+        5: 'Otro'
+    };
+    const { success, error: toastError, warn } = useNotifications();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({
         ref: '',
@@ -19,7 +28,7 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
         fecha_migracion: '',
         velocidad: '',
         tipo_enlace: '',
-        zona: '',
+        zona: !esAdminGlobal && userZona ? userZona : '',
     });
 
     const handleChange = (e) => {
@@ -35,12 +44,12 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
 
         // Validar obligatorios visuales
         if (!formData.ref || !formData.nombre || !formData.tipo_unidad) {
-            alert('Por favor, completa los campos obligatorios: Referencia, Nombre y Tipo de Unidad.');
+            warn('Por favor, completa los campos obligatorios: Referencia, Nombre y Tipo de Unidad.');
             return;
         }
 
         if (formData.zona !== '' && formData.zona !== null && parseInt(formData.zona, 10) < 0) {
-            alert('La zona no puede ser un número negativo.');
+            warn('La zona no puede ser un número negativo.');
             return;
         }
 
@@ -51,6 +60,7 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
                 vlan: formData.vlan === '' ? null : parseInt(formData.vlan, 10),
                 zona: formData.zona === '' ? null : parseInt(formData.zona, 10),
                 bits: formData.bits === '' ? null : parseInt(formData.bits, 10),
+                tipo_enlace: formData.tipo_enlace === '' || formData.tipo_enlace === 'Ninguno' ? null : parseInt(formData.tipo_enlace, 10),
             };
             
             await onAddUnidad(submitData);
@@ -61,7 +71,7 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
             onClose();
         } catch (error) {
             console.error('Error al agregar unidad:', error);
-            alert(error.response?.data || 'Ocurrió un error al guardar la unidad.');
+            toastError(error.response?.data || 'Ocurrió un error al guardar la unidad.');
         } finally {
             setIsSubmitting(false);
         }
@@ -131,7 +141,8 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
                                     onChange={handleChange}
                                     placeholder="Ej: 1"
                                     min="0"
-                                    className="bg-white border-slate-200"
+                                    className={`bg-white border-slate-200 ${!esAdminGlobal ? 'opacity-70 cursor-not-allowed bg-slate-50' : ''}`}
+                                    disabled={!esAdminGlobal}
                                 />
                             </div>
                         </div>
@@ -206,13 +217,24 @@ const UnidadForm = ({ onAddUnidad, onClose }) => {
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-slate-600 font-medium">Tipo de Enlace</Label>
-                                <Input
-                                    name="tipo_enlace"
-                                    value={formData.tipo_enlace}
-                                    onChange={handleChange}
-                                    placeholder="Ej: Fibra Óptica, Satelital"
-                                    className="bg-white border-slate-200"
-                                />
+                                <Select
+                                    value={formData.tipo_enlace ? String(formData.tipo_enlace) : ''}
+                                    onValueChange={(value) => handleChange({ target: { name: 'tipo_enlace', value: value === 'Ninguno' ? '' : value } })}
+                                >
+                                    <SelectTrigger className="w-full bg-white border border-slate-200">
+                                        <SelectValue placeholder="Seleccione tipo">
+                                            {formData.tipo_enlace ? ENLACE_MAP[formData.tipo_enlace] || formData.tipo_enlace : 'Seleccione tipo'}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Ninguno">Ninguno</SelectItem>
+                                        <SelectItem value="1">Fibra Óptica</SelectItem>
+                                        <SelectItem value="2">Cobre</SelectItem>
+                                        <SelectItem value="3">Satelital</SelectItem>
+                                        <SelectItem value="4">Punto a punto</SelectItem>
+                                        <SelectItem value="5">Otro</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-slate-600 font-medium">Velocidad</Label>

@@ -2,8 +2,10 @@ import ExcelJS from 'exceljs';
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import React, { useState, useEffect, useContext } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,8 +24,104 @@ const CustomTooltip = ({ title, children }) => (
         </Tooltip>
     </TooltipProvider>
 );
+
+const SearchableUnidadSelect = ({ value, onChange, unidades }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = React.useRef(null);
+
+    React.useEffect(() => {
+        const selected = unidades.find(u => String(u.ref) === String(value));
+        if (selected) {
+            setSearchTerm(selected.nombre);
+        } else {
+            setSearchTerm('');
+        }
+    }, [value, unidades]);
+
+    React.useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                setIsOpen(false);
+                const selected = unidades.find(u => String(u.ref) === String(value));
+                setSearchTerm(selected ? selected.nombre : '');
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [wrapperRef, value, unidades]);
+
+    const normalizeText = (text) => {
+        return text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : '';
+    };
+
+    const filteredUnidades = unidades.filter(u => 
+        normalizeText(u.nombre).includes(normalizeText(searchTerm)) || 
+        normalizeText(u.ref).includes(normalizeText(searchTerm))
+    );
+
+    return (
+        <div className="relative w-full" ref={wrapperRef}>
+            <div className="relative">
+                <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setIsOpen(true);
+                        if (e.target.value === '') {
+                            onChange('');
+                        }
+                    }}
+                    onClick={() => setIsOpen(true)}
+                    className="w-full border border-slate-200 rounded-lg p-2 pr-8 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+                    placeholder="Buscar unidad por nombre o número..."
+                    required={!value}
+                />
+                <i className={`fas fa-chevron-down absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none transition-transform ${isOpen ? 'rotate-180' : ''}`}></i>
+            </div>
+            {isOpen && (
+                <ul className="absolute z-50 w-full mt-1 max-h-60 overflow-auto bg-white border border-slate-200 rounded-lg shadow-xl">
+                    <li
+                        onClick={() => {
+                            onChange('');
+                            setSearchTerm('');
+                            setIsOpen(false);
+                        }}
+                        className="px-3 py-2 text-sm text-slate-500 italic hover:bg-slate-50 cursor-pointer border-b border-slate-100"
+                    >
+                        -- Ninguna / Limpiar selección --
+                    </li>
+                    {filteredUnidades.length > 0 ? (
+                        filteredUnidades.map(u => (
+                            <li
+                                key={u.ref}
+                                onMouseDown={(e) => {
+                                    // Prevenir que el input pierda foco antes de hacer click
+                                    e.preventDefault();
+                                }}
+                                onClick={() => {
+                                    onChange(u.ref);
+                                    setSearchTerm(u.nombre);
+                                    setIsOpen(false);
+                                }}
+                                className="px-3 py-2 text-sm text-slate-700 hover:bg-purple-50 hover:text-purple-700 cursor-pointer border-b border-slate-100 last:border-0 transition-colors"
+                            >
+                                {u.nombre}
+                            </li>
+                        ))
+                    ) : (
+                        <li className="px-3 py-2 text-sm text-slate-500 text-center">No se encontraron unidades</li>
+                    )}
+                </ul>
+            )}
+        </div>
+    );
+};
+
 const tablaRegistros = () => {
     const { user } = useContext(AuthContext);
+    const { success, error: toastError, warn, confirm } = useNotifications();
     const getTipoAtencionLabel = (val) => {
         switch (val) {
             case 'uno': return 'Mantenimiento Resuelto';
@@ -35,6 +133,7 @@ const tablaRegistros = () => {
         }
     };
     const [hoveredRow, setHoveredRow] = useState(null); // Estado para marcar la selección en la tabla
+    const [selectedRowId, setSelectedRowId] = useState(null); // Estado para la fila seleccionada
     const [selectedNodo, setSelectedNodo] = useState(null); // Estado para almacenar el nodo seleccionado (detalles)
     const [selectedImage, setSelectedImage] = useState(null); // Estado para almacenar la imagen seleccionada
     const [selectedSinAtencionNodo, setSelectedAtencionNodo] = useState(null); // Estado para almacenar información del nodo y sus registros de mantenimiento
@@ -46,8 +145,36 @@ const tablaRegistros = () => {
     const [totalOtroAtendido, setTotalOtroAtendido] = useState(0); // Estado para el total de nodos atendidos de otras atenciones
     const [totalAtendidos, setTotalAtendidos] = useState(0); // Estado para el total de nodos atendidos en mantenimiento
     const [totalOtraAtencion, setTotalOtraAtencion] = useState(0); // Estado para el total de nodos faltantes
+    const [totalSinImagenes, setTotalSinImagenes] = useState(0); // Estado para total sin imagenes
     const [searchUnidadTabla, setSearchUnidadTabla] = useState("");
     const unidadesFiltradasTabla = unidades.filter(u => u.nombre.toLowerCase().includes(searchUnidadTabla.toLowerCase()));
+
+    // Mapa de unidades para búsquedas rápidas O(1)
+    const unidadesMap = React.useMemo(() => {
+        const refMap = {};
+        const nameMap = {};
+        unidades.forEach(u => {
+            if (u.ref !== undefined && u.ref !== null) {
+                refMap[String(u.ref)] = u;
+            }
+            if (u.nombre) {
+                nameMap[u.nombre.toLowerCase().trim()] = u;
+            }
+        });
+        return { refMap, nameMap };
+    }, [unidades]);
+
+    const getUnidadInfo = React.useCallback((ref, nombre) => {
+        if (ref && unidadesMap.refMap[String(ref)]) {
+            const u = unidadesMap.refMap[String(ref)];
+            return `${u.ref} — ${u.nombre}`;
+        }
+        if (nombre && unidadesMap.nameMap[nombre.toLowerCase().trim()]) {
+            const u = unidadesMap.nameMap[nombre.toLowerCase().trim()];
+            return `${u.ref} — ${u.nombre}`;
+        }
+        return nombre || ref || 'Sin Unidad';
+    }, [unidadesMap]);
     const [filteredNodos, setFilteredNodos] = useState([]); // Estado para almacenar la nueva consulta
     const [materiales, setMateriales] = useState([]); // Estado para almacenar los materiales totales de la consulta
     const [total_IDF_MDF, setTotal_IDF_MDF] = useState([]); // Estado para almacenar la suma de los MDF e IDF de la consulta
@@ -58,6 +185,21 @@ const tablaRegistros = () => {
     const [isEditingMdfIdf, setIsEditingMdfIdf] = useState(false);
     const [fetchedUnitCodes, setFetchedUnitCodes] = useState([]);
     const [fetchedUnitImages, setFetchedUnitImages] = useState([]);
+
+    // === Diagramas de Red ===
+    const [showDiagramasModal, setShowDiagramasModal] = useState(false);
+    const [selectedImagesDiagramas, setSelectedImagesDiagramas] = useState(null);
+    const [showDiagramasForm, setShowDiagramasForm] = useState(false);
+    const [isEditingDiagramas, setIsEditingDiagramas] = useState(false);
+    const [diagramasFormData, setDiagramasFormData] = useState({
+        isNew: 'Existente',
+        unidadForm: '',
+        nombre: '',
+        file: null
+    });
+    const [imgDiagramasVersion, setImgDiagramasVersion] = useState(Date.now());
+    const [fetchedUnitDiagramas, setFetchedUnitDiagramas] = useState([]);
+    // =======================
     const [imgVersion, setImgVersion] = useState(Date.now()); // cache-busting para imágenes MDF/IDF
     const [mdfIdfFormData, setMdfIdfFormData] = useState({
         isNew: 'Existente',
@@ -67,9 +209,11 @@ const tablaRegistros = () => {
         nombre: '',
         file: null
     });
+    const location = useLocation();
+
     const [filtros, setFiltros] = useState({ // Estado para los filtros
         atencion: '',
-        unidad: '',
+        unidad: location.state?.unidadFilter || '',
         otraatencion: '',
         categoria: '',
         anioInstalacion: '',
@@ -83,18 +227,88 @@ const tablaRegistros = () => {
     const [page, setPage] = useState(0); // Estado para la página actual
     const [rowsPerPage, setRowsPerPage] = useState(10); // Estado para la cantidad de registros por página
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // Filtros de Tarjetas
+    const [activeCardFilters, setActiveCardFilters] = useState(() => {
+        if (location.state && location.state.activeCardFilter) {
+            return Array.isArray(location.state.activeCardFilter) 
+                ? location.state.activeCardFilter 
+                : [location.state.activeCardFilter];
+        }
+        return [];
+    }); 
+    const [isStrictFilterMode, setIsStrictFilterMode] = useState(() => {
+        if (location.state && location.state.activeCardFilter) {
+            const filtersToApply = Array.isArray(location.state.activeCardFilter) 
+                ? location.state.activeCardFilter 
+                : [location.state.activeCardFilter];
+            if (filtersToApply.length > 1) {
+                return false;
+            }
+        }
+        return true;
+    });
+    
+    useEffect(() => {
+        if (location.state) {
+            // Clear the state so it doesn't persist on subsequent reloads
+            window.history.replaceState({}, document.title);
+        }
+    }, [location.state]);
+
+    const toggleCardFilter = (filterKey) => {
+        setActiveCardFilters(prev => 
+            prev.includes(filterKey) 
+                ? prev.filter(k => k !== filterKey)
+                : [...prev, filterKey]
+        );
+    };
+
+    const clearCardFilters = () => {
+        setActiveCardFilters([]);
+    };
 
     const displayedNodos = React.useMemo(() => {
-        if (!searchTerm.trim()) return filteredNodos;
-        const term = searchTerm.toLowerCase();
-        return filteredNodos.filter(nodo => 
-            (nodo.Ubicacion && nodo.Ubicacion.toLowerCase().includes(term)) ||
-            (nodo.Area && nodo.Area.toLowerCase().includes(term)) ||
-            (nodo.Unidad && nodo.Unidad.toLowerCase().includes(term)) ||
-            (nodo.IpSwitch && nodo.IpSwitch.toLowerCase().includes(term)) ||
-            (nodo.Puerto && String(nodo.Puerto).toLowerCase().includes(term))
-        );
-    }, [filteredNodos, searchTerm]);
+        let result = filteredNodos;
+
+        // Apply Card Filters
+        if (activeCardFilters.length > 0) {
+            result = result.filter(nodo => {
+                const conditions = {
+                    reqMantenimiento: nodo.Atencion === 1 || nodo.Atencion === true,
+                    reqOtraAtencion: nodo.OtraAtencion === 1 || nodo.OtraAtencion === true,
+                    mantResuelto: nodo.Atendido === 1 || nodo.Atendido === true,
+                    otraAtResuelta: nodo.OtroAtendido === 1 || nodo.OtroAtendido === true,
+                    totalFaltantes: parseInt(nodo.Nodos_faltantes) > 0,
+                    sinImagenes: !nodo.TieneImagenes
+                };
+
+                const activeConditions = activeCardFilters.map(f => conditions[f]);
+
+                if (isStrictFilterMode) {
+                    // AND logic: all active filters must be true
+                    return activeConditions.every(cond => cond === true);
+                } else {
+                    // OR logic: at least one active filter must be true
+                    return activeConditions.some(cond => cond === true);
+                }
+            });
+        }
+
+        // Apply Search Term
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase();
+            result = result.filter(nodo => 
+                (nodo.Ubicacion && nodo.Ubicacion.toLowerCase().includes(term)) ||
+                (nodo.Area && nodo.Area.toLowerCase().includes(term)) ||
+                (nodo.Unidad && nodo.Unidad.toLowerCase().includes(term)) ||
+                (nodo.IpSwitch && nodo.IpSwitch.toLowerCase().includes(term)) ||
+                (nodo.Puerto && String(nodo.Puerto).toLowerCase().includes(term))
+            );
+        }
+
+        return result;
+    }, [filteredNodos, searchTerm, activeCardFilters, isStrictFilterMode]);
 
     // Reset page to 0 when searchTerm changes
     useEffect(() => {
@@ -109,14 +323,19 @@ const tablaRegistros = () => {
     const [imgMdfPage, setImgMdfPage] = useState(0);
     const [imgMdfPerPage, setImgMdfPerPage] = useState(12);
 
+    // Paginación para modal de imágenes Diagramas de Red
+    const [imgDiagramasPage, setImgDiagramasPage] = useState(0);
+    const [imgDiagramasPerPage, setImgDiagramasPerPage] = useState(12);
+
     // Función para abrir el modal con los detalles del nodo
     const handleDetailsClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         try {
             const response = await axios.get(`${API_URL}/api/nodos/${nodoData.Id}`); // Llama a la API para obtener los detalles completos del nodo
             setSelectedNodo(response.data); // Guarda los detalles completos en el estado
         } catch (error) {
             console.error('Error al obtener los detalles del nodo:', error);
-            alert('Error al obtener los detalles del nodo');
+            toastError('Error al obtener los detalles del nodo');
         }
     };
 
@@ -175,6 +394,7 @@ const tablaRegistros = () => {
             setTotalOtraAtencion(response.data.totalOtraAtencion);
             setTotalAtendidos(response.data.totalAtendido);
             setTotalOtroAtendido(response.data.totalOtroAtendido);
+            setTotalSinImagenes(response.data.totalSinImagenes || 0);
             setMateriales(response.data.materialesSuma);
             setTotal_IDF_MDF(response.data.idf_mdf_Suma);
         } catch (error) {
@@ -317,7 +537,7 @@ const tablaRegistros = () => {
 
         } catch (error) {
             console.error("Error al exportar a Excel:", error);
-            alert("Ocurrió un error al generar el archivo Excel");
+            toastError("Ocurrió un error al generar el archivo Excel");
         }
     };
 
@@ -434,7 +654,7 @@ const tablaRegistros = () => {
 
         } catch (error) {
             console.error("Error al exportar a Excel:", error);
-            alert("Ocurrió un error al generar el archivo Excel");
+            toastError("Ocurrió un error al generar el archivo Excel");
         }
     };
 
@@ -549,7 +769,7 @@ const tablaRegistros = () => {
 
         } catch (error) {
             console.error("Error al exportar a Excel:", error);
-            alert("Ocurrió un error al generar el archivo Excel");
+            toastError("Ocurrió un error al generar el archivo Excel");
         }
     };
 
@@ -591,6 +811,7 @@ const tablaRegistros = () => {
 
     // Función para abrir el modal de información del mantenimiento
     const handleAtencionClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         try {
             // Obtener las imágenes solventadas desde el backend
             const response = await axios.get(`${API_URL}/api/nodos/${nodoData.Id}`);
@@ -605,6 +826,7 @@ const tablaRegistros = () => {
 
     // Función para abrir el modal de información otras atenciones
     const handleOtherAtencionClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         try {
             // Obtener las imágenes solventadas desde el backend
             const response = await axios.get(`${API_URL}/api/nodos/${nodoData.Id}`);
@@ -631,11 +853,16 @@ const tablaRegistros = () => {
     };
 
     // Función para abrir el modal de todas las imágenes de la unidad
-    const handleImagenesUnidadNodos = async () => {
+    const handleImagenesUnidadNodos = async (overrideUnidad) => {
         try {
+            // Obtenemos los IDs de los nodos que actualmente se están visualizando en la tabla
+            const nodosIds = displayedNodos.map(nodo => nodo.Id);
+
             // Obtener TODAS las imágenes (limit alto para traer todo y paginar en cliente)
-            const response = await axios.get(`${API_URL}/api/nodos/imagenes-nodos/${filtros.unidad}`, {
-                params: { page: 1, limit: 9999 }
+            const response = await axios.post(`${API_URL}/api/nodos/imagenes-nodos-filtrados`, {
+                nodosIds: nodosIds,
+                page: 1, 
+                limit: 9999
             });
 
             const ImagenesNodos = response.data;
@@ -649,9 +876,10 @@ const tablaRegistros = () => {
     };
 
     // Función para abrir el modal de todas las imágenes de la unidad (MDF IDF)
-    const handleImagenesUnidad = async () => {
+    const handleImagenesUnidad = async (overrideUnidad) => {
         try {
-            const response = await axios.get(`${API_URL}/api/nodos/imagenes/${filtros.unidad}`, {
+            const unidadParam = typeof overrideUnidad === 'string' ? overrideUnidad : (filtros.unidad || " ");
+            const response = await axios.get(`${API_URL}/api/nodos/imagenes/${unidadParam}`, {
                 params: { page: 1, limit: 9999 }
             });
             const ImagenesNodos = response.data;
@@ -726,16 +954,16 @@ const tablaRegistros = () => {
     };
 
     const handleDeleteMdfIdf = async (id) => {
-        if (!window.confirm('¿Estás seguro de que deseas eliminar esta imagen?')) return;
+        if (!await confirm('¿Estás seguro de que deseas eliminar esta imagen?')) return;
         try {
             await axios.delete(`${API_URL}/api/nodos/mdf-idf-imagenes/${id}`);
-            alert('Imagen eliminada con éxito');
+            success('Imagen eliminada con éxito');
             setSelectedImage(null); // Cerrar imagen grande
             setImgVersion(Date.now()); // Forzar rotura de cache
             handleImagenesUnidad(); // Recargar
         } catch (error) {
             console.error('Error al eliminar:', error);
-            alert('Hubo un error al eliminar la imagen');
+            toastError('Hubo un error al eliminar la imagen');
         }
     };
 
@@ -761,7 +989,7 @@ const tablaRegistros = () => {
                 await axios.put(`${API_URL}/api/nodos/mdf-idf-imagenes/${mdfIdfFormData.id}`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                alert('Imagen actualizada con éxito');
+                success('Imagen actualizada con éxito');
             } else {
                 const referenciaUnidad = mdfIdfFormData.unidadForm || filtros.unidad;
                 const unidadObj = unidades.find(u => String(u.ref) === String(referenciaUnidad));
@@ -777,7 +1005,7 @@ const tablaRegistros = () => {
                 await axios.post(`${API_URL}/api/nodos/mdf-idf-imagenes`, formData, {
                     headers: { 'Content-Type': 'multipart/form-data' }
                 });
-                alert('Imagen agregada con éxito');
+                success('Imagen agregada con éxito');
             }
             handleCloseMdfIdfForm();
             setImgVersion(Date.now()); // Forzar rotura de cache
@@ -794,18 +1022,127 @@ const tablaRegistros = () => {
             }
         } catch (error) {
             console.error('Error al guardar:', error);
-            alert('Error al guardar la imagen');
+            toastError('Error al guardar la imagen');
+        }
+    };
+    
+    // === Lógica CRUD Diagramas de Red ===
+    const handleCloseDiagramasForm = () => {
+        setShowDiagramasForm(false);
+        setIsEditingDiagramas(false);
+        setDiagramasFormData({ isNew: 'Existente', unidadForm: '', nombre: '', file: null });
+    };
+
+    const handleUploadClickDiagrama = () => {
+        const unidadRef = filtros.unidad || "";
+        setIsEditingDiagramas(false);
+        setDiagramasFormData(prev => ({ ...prev, unidadForm: unidadRef, nombre: '' }));
+        setShowDiagramasForm(true);
+    };
+
+    const handleImagenesDiagramas = async (overrideUnidad) => {
+        try {
+            const unidadParam = typeof overrideUnidad === 'string' ? overrideUnidad : (filtros.unidad || "all");
+            const response = await axios.get(`${API_URL}/api/nodos/diagramas-red/${unidadParam}`, {
+                params: { page: 1, limit: 9999 }
+            });
+            const data = response.data;
+            if (data && data.DiagramasRed) {
+                setFetchedUnitDiagramas(data.DiagramasRed);
+                setShowDiagramasModal(true);
+                return data; // Para uso en funciones de actualización local
+            }
+        } catch (error) {
+            console.error('Error al obtener los diagramas:', error);
+            toastError('Error al obtener los diagramas de la unidad');
+        }
+    };
+
+    const handleEditDiagramaClick = (image) => {
+        const unidadRef = filtros.unidad || image.ReferenciaUnidad;
+        setDiagramasFormData({
+            id: image.Id,
+            isNew: 'Existente',
+            unidadForm: unidadRef,
+            nombre: image.Nombre || '',
+            file: null
+        });
+        setIsEditingDiagramas(true);
+        setShowDiagramasForm(true);
+    };
+
+    const handleDeleteDiagrama = async (id) => {
+        if (await confirm('¿Está seguro de eliminar este diagrama?')) {
+            try {
+                await axios.delete(`${API_URL}/api/nodos/diagramas-red/${id}`);
+                success('Diagrama eliminado con éxito');
+                setImgDiagramasVersion(Date.now());
+                const datos = await handleImagenesDiagramas();
+                if (datos) {
+                    setFetchedUnitDiagramas(datos.DiagramasRed || []);
+                }
+                setSelectedImage(null);
+            } catch (error) {
+                console.error('Error al eliminar diagrama:', error);
+                toastError('Error al eliminar diagrama');
+            }
+        }
+    };
+
+    const handleSubmitDiagrama = async (e) => {
+        e.preventDefault();
+        try {
+            const formData = new FormData();
+            formData.append('Nombre', diagramasFormData.nombre);
+
+            const referenciaUnidad = diagramasFormData.unidadForm || filtros.unidad;
+            const unidadObj = unidades.find(u => String(u.ref) === String(referenciaUnidad));
+            const nombreUnidad = unidadObj ? unidadObj.nombre : referenciaUnidad;
+            
+            formData.append('NombreUnidad', nombreUnidad);
+            formData.append('ReferenciaUnidad', referenciaUnidad);
+
+            if (isEditingDiagramas) {
+                if (diagramasFormData.file) {
+                    formData.append('newImage', diagramasFormData.file);
+                }
+                await axios.put(`${API_URL}/api/nodos/diagramas-red/${diagramasFormData.id}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                success('Diagrama actualizado con éxito');
+            } else {
+                formData.append('image', diagramasFormData.file);
+                await axios.post(`${API_URL}/api/nodos/diagramas-red`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' }
+                });
+                success('Diagrama agregado con éxito');
+            }
+            handleCloseDiagramasForm();
+            setImgDiagramasVersion(Date.now());
+            const datosActualizados = await handleImagenesDiagramas();
+
+            if (isEditingDiagramas && datosActualizados) {
+                const imagenActualizada = datosActualizados.DiagramasRed?.find(
+                    img => img.Id === diagramasFormData.id
+                );
+                if (imagenActualizada) {
+                    setSelectedImage({ ...imagenActualizada, isDiagrama: true });
+                }
+            }
+        } catch (error) {
+            console.error('Error al guardar diagrama:', error);
+            toastError('Error al guardar el diagrama');
         }
     };
     // =============================
 
     return (
-        <div className="space-y-6">
+        <div className="flex flex-col space-y-3 md:h-[calc(100vh-120px)] lg:h-[calc(100vh-140px)]">
             {/* Header del catálogo */}
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200/80 shadow-xs">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
                 <div>
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-800">Catálogo de Nodos</h1>
-                    <p className="text-sm text-slate-500 mt-1">Inventario de nodos registrados en la unidad</p>
+                    <h1 className="text-xl font-bold tracking-tight text-slate-800">Catálogo de Nodos</h1>
+                    <p className="text-xs text-slate-500 mt-0.5">Inventario de nodos registrados en la unidad</p>
                 </div>
                 
                 {/* Botones de acción alineados en el header */}
@@ -814,7 +1151,11 @@ const tablaRegistros = () => {
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button onClick={fetchNodos} size="icon" variant="outline" className="bg-slate-50 text-slate-600 hover:bg-slate-100 border-slate-200">
+                                <Button 
+                                    onClick={fetchNodos} 
+                                    variant="outline" 
+                                    className="h-10 w-10 rounded-full border border-slate-200 p-0 text-slate-500 hover:bg-slate-50 hover:text-slate-700 flex items-center justify-center bg-white shadow-xs"
+                                >
                                     <i className="fas fa-sync-alt"></i>
                                 </Button>
                             </TooltipTrigger>
@@ -827,38 +1168,20 @@ const tablaRegistros = () => {
                     {!EstaVacio(materiales) && (
                         <Button
                             onClick={() => setShowMaterials(true)}
-                            className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition gap-2"
+                            className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
                         >
-                            <i className="fas fa-boxes"></i>
-                            <span>Mostrar materiales</span>
+                            <i className="fas fa-boxes"></i> Mostrar materiales
                         </Button>
                     )}
 
                     {filtros.unidad !== '' && (
                         <>
                             <Button
-                                variant="outline"
-                                onClick={handleImagenesUnidad}
-                                className="bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs transition gap-2"
-                            >
-                                <i className="fas fa-images text-slate-500"></i>
-                                <span>Imágenes (MDF - IDF)</span>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                onClick={handleImagenesUnidadNodos}
-                                className="bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs transition gap-2"
-                            >
-                                <i className="fas fa-network-wired text-slate-500"></i>
-                                <span>Imágenes (Nodos)</span>
-                            </Button>
-                            <Button
                                 onClick={exportarAExcel}
-                                className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 h-10 shadow-xs"
+                                className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
                                 disabled={filteredNodos.length === 0}
                             >
-                                <i className="fas fa-file-excel"></i>
-                                <span>Exportar</span>
+                                <i className="fas fa-file-excel"></i> Exportar
                             </Button>
                         </>
                     )}
@@ -866,88 +1189,160 @@ const tablaRegistros = () => {
             </div>
 
             {/* Tarjetas de estadísticas mejoradas */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mt-2 mb-1 gap-2">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 hidden md:inline">Haz clic en las tarjetas para filtrar los resultados en la tabla.</span>
+                <span className="text-[10px] font-semibold text-slate-500 md:hidden">Toca las tarjetas para filtrar.</span>
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                    <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Combinar Filtros:</span>
+                    <button 
+                        onClick={() => setIsStrictFilterMode(true)}
+                        className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full border transition-colors ${isStrictFilterMode ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500'}`}
+                    >
+                        Estricto (Y)
+                    </button>
+                    <button 
+                        onClick={() => setIsStrictFilterMode(false)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${!isStrictFilterMode ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500'}`}
+                    >
+                        Cualquiera (O)
+                    </button>
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
                 {/* Total Registros */}
-                <div className="bg-white rounded-xl border-l-4 border-l-emerald-500 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={clearCardFilters}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.length === 0 
+                            ? 'bg-emerald-50 border-emerald-500 border-y border-r border-emerald-200 shadow-sm ring-1 ring-emerald-400' 
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Total Registros</span>
-                        <span className="text-2xl font-extrabold text-slate-800 mt-1 block">{totalRegistros}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Total Registros</span>
+                        <span className="text-xl font-extrabold text-slate-800 mt-0.5 block">{totalRegistros}</span>
                     </div>
-                    <div className="h-9 w-9 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 shrink-0">
-                        <i className="fas fa-database text-sm"></i>
+                    <div className="h-8 w-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 shrink-0">
+                        <i className="fas fa-database text-xs"></i>
                     </div>
                 </div>
 
                 {/* Req. Mantenimiento */}
-                <div className="bg-white rounded-xl border-l-4 border-l-red-500 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={() => toggleCardFilter('reqMantenimiento')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('reqMantenimiento')
+                            ? 'bg-red-50 border-red-500 border-y border-r border-red-200 shadow-sm ring-1 ring-red-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Req. Mantenimiento</span>
-                        <span className="text-2xl font-extrabold text-red-600 mt-1 block">{totalAtencion || 0}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Req. Mantenimiento</span>
+                        <span className="text-xl font-extrabold text-red-600 mt-0.5 block">{totalAtencion || 0}</span>
                     </div>
-                    <div className="h-9 w-9 bg-red-50 rounded-lg flex items-center justify-center text-red-600 shrink-0">
-                        <i className="fas fa-tools text-sm"></i>
+                    <div className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 shrink-0">
+                        <i className="fas fa-tools text-xs"></i>
                     </div>
                 </div>
 
                 {/* Req. Otra Atención */}
-                <div className="bg-white rounded-xl border-l-4 border-l-amber-500 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={() => toggleCardFilter('reqOtraAtencion')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('reqOtraAtencion')
+                            ? 'bg-amber-50 border-amber-500 border-y border-r border-amber-200 shadow-sm ring-1 ring-amber-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Req. Otra Atención</span>
-                        <span className="text-2xl font-extrabold text-amber-600 mt-1 block">{totalOtraAtencion || 0}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Req. Otra Atención</span>
+                        <span className="text-xl font-extrabold text-amber-600 mt-0.5 block">{totalOtraAtencion || 0}</span>
                     </div>
-                    <div className="h-9 w-9 bg-amber-50 rounded-lg flex items-center justify-center text-amber-500 shrink-0">
-                        <i className="fas fa-exclamation-triangle text-sm"></i>
+                    <div className="h-8 w-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-500 shrink-0">
+                        <i className="fas fa-exclamation-triangle text-xs"></i>
                     </div>
                 </div>
 
                 {/* Mantenimiento Resuelto */}
-                <div className="bg-white rounded-xl border-l-4 border-l-green-600 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={() => toggleCardFilter('mantResuelto')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('mantResuelto')
+                            ? 'bg-green-50 border-green-600 border-y border-r border-green-200 shadow-sm ring-1 ring-green-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Mant. Resuelto</span>
-                        <span className="text-2xl font-extrabold text-green-600 mt-1 block">{totalAtendidos || 0}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Mant. Resuelto</span>
+                        <span className="text-xl font-extrabold text-green-600 mt-0.5 block">{totalAtendidos || 0}</span>
                     </div>
-                    <div className="h-9 w-9 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
-                        <i className="fas fa-check-circle text-sm"></i>
+                    <div className="h-8 w-8 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
+                        <i className="fas fa-check-circle text-xs"></i>
                     </div>
                 </div>
 
                 {/* Otra At. Resuelta */}
-                <div className="bg-white rounded-xl border-l-4 border-l-teal-500 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={() => toggleCardFilter('otraAtResuelta')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('otraAtResuelta')
+                            ? 'bg-teal-50 border-teal-500 border-y border-r border-teal-200 shadow-sm ring-1 ring-teal-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Otra At. Resuelta</span>
-                        <span className="text-2xl font-extrabold text-teal-600 mt-1 block">{totalOtroAtendido || 0}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Otra At. Resuelta</span>
+                        <span className="text-xl font-extrabold text-teal-600 mt-0.5 block">{totalOtroAtendido || 0}</span>
                     </div>
-                    <div className="h-9 w-9 bg-teal-50 rounded-lg flex items-center justify-center text-teal-600 shrink-0">
-                        <i className="fas fa-tasks text-sm"></i>
+                    <div className="h-8 w-8 bg-teal-50 rounded-lg flex items-center justify-center text-teal-600 shrink-0">
+                        <i className="fas fa-tasks text-xs"></i>
                     </div>
                 </div>
 
                 {/* Total Faltantes */}
-                <div className="bg-white rounded-xl border-l-4 border-l-slate-400 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200">
+                <div 
+                    onClick={() => toggleCardFilter('totalFaltantes')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('totalFaltantes')
+                            ? 'bg-slate-100 border-slate-400 border-y border-r border-slate-300 shadow-sm ring-1 ring-slate-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
                     <div>
-                        <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Total Faltantes</span>
-                        <span className="text-2xl font-extrabold text-slate-600 mt-1 block">{totalFaltantes || 0}</span>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Total Faltantes</span>
+                        <span className="text-xl font-extrabold text-slate-600 mt-0.5 block">{totalFaltantes || 0}</span>
                     </div>
-                    <div className="h-9 w-9 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 shrink-0">
-                        <i className="fas fa-folder-minus text-sm"></i>
+                    <div className="h-8 w-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 shrink-0">
+                        <i className="fas fa-folder-minus text-xs"></i>
                     </div>
                 </div>
 
-                {total_IDF_MDF?.length > 0 && total_IDF_MDF.map((IDF_MDF, index) => (
-                    <div key={index} className="bg-white rounded-xl border-l-4 border-l-sky-500 border border-slate-200/80 p-4 shadow-xs flex items-center justify-between hover:shadow-md transition-all duration-200 col-span-1">
-                        <div>
-                            <span className="block text-[10px] uppercase font-bold tracking-wider text-slate-400">Total {IDF_MDF.Tipo}</span>
-                            <span className="text-2xl font-extrabold text-slate-800 mt-1 block">{IDF_MDF.Cantidad || 0}</span>
-                        </div>
-                        <div className="h-9 w-9 bg-sky-50 rounded-lg flex items-center justify-center text-sky-600 shrink-0">
-                            <i className="fas fa-network-wired text-sm"></i>
-                        </div>
+                {/* Sin Imágenes */}
+                <div 
+                    onClick={() => toggleCardFilter('sinImagenes')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('sinImagenes')
+                            ? 'bg-blue-50 border-blue-600 border-y border-r border-blue-200 shadow-sm ring-1 ring-blue-400'
+                            : 'bg-white border-slate-200 hover:shadow-sm border-l-transparent'
+                    }`}
+                >
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Sin Imágenes</span>
+                        <span className="text-xl font-extrabold text-blue-600 mt-0.5 block">{totalSinImagenes || 0}</span>
                     </div>
-                ))}
+                    <div className="h-8 w-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
+                        <i className="fas fa-wifi text-xs"></i>
+                    </div>
+                </div>
+
             </div>
 
-            {/* Barra de Filtros única colocada justo sobre la tabla */}
-            <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col md:flex-row md:items-center gap-4">
+            {/* Contenedor principal de datos (Filtros + Tabla + Paginación) */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-0 w-full mb-0">
+                
+                {/* Barra de Filtros (Header del contenedor) */}
+                <div className="p-3 border-b border-slate-200/80 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 bg-slate-50/30">
                 {/* Búsqueda cliente-side */}
                 <div className="flex-1 relative">
                     <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
@@ -956,31 +1351,13 @@ const tablaRegistros = () => {
                         placeholder="Buscar por ubicación, IP de switch, puerto o área..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all placeholder:text-slate-400"
+                        className="w-full pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all placeholder:text-slate-400"
                     />
-                </div>
-                {/* Filtro de Atención */}
-                <div className="w-full md:w-auto min-w-[200px]">
-                    <Select value={filtros.tipoAtencion || " "} onValueChange={(val) => handleFiltroChange({target: {name: 'tipoAtencion', value: val.trim()}})}>
-                        <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm">
-                            <SelectValue placeholder="Filtro de atención">
-                                {filtros.tipoAtencion && filtros.tipoAtencion !== " " ? getTipoAtencionLabel(filtros.tipoAtencion) : "Todos los estatus de atención"}
-                            </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value=" ">Todos los estatus de atención</SelectItem>
-                            <SelectItem value="uno">Mantenimiento Resuelto</SelectItem>
-                            <SelectItem value="mantenimiento">Requieren Mantenimiento</SelectItem>
-                            <SelectItem value="otraAtencion">Requieren Otra Atención</SelectItem>
-                            <SelectItem value="ambos">Ambos Pendientes</SelectItem>
-                            <SelectItem value="ninguno">Sin Pendientes</SelectItem>
-                        </SelectContent>
-                    </Select>
                 </div>
                 {/* Filtro de Unidad */}
                 <div className="w-full md:w-auto min-w-[220px]">
                     <Select value={filtros.unidad || " "} onValueChange={(val) => handleFiltroChange({target: {name: 'unidad', value: val.trim()}})}>
-                        <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm">
+                        <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm h-9">
                             <SelectValue placeholder="Todas las unidades">
                                 {filtros.unidad && filtros.unidad !== " " ? (unidades.find(u => String(u.ref) === filtros.unidad)?.nombre || filtros.unidad) : "Todas las unidades"}
                             </SelectValue>
@@ -1007,15 +1384,46 @@ const tablaRegistros = () => {
                         </SelectContent>
                     </Select>
                 </div>
+                {/* Botones de Galerías */}
+                {total_IDF_MDF?.length > 0 && total_IDF_MDF.map((IDF_MDF, index) => (
+                    <Button
+                        key={index}
+                        variant="outline"
+                        onClick={() => handleImagenesUnidad()}
+                        className="h-9 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs transition gap-2 whitespace-nowrap"
+                    >
+                        <i className="fas fa-images text-sky-500"></i>
+                        <span className="hidden lg:inline">Galería</span> {IDF_MDF.Tipo}
+                        <span className="bg-sky-100 text-sky-700 py-0.5 px-2 rounded-full text-xs font-bold ml-1">{IDF_MDF.Cantidad}</span>
+                    </Button>
+                ))}
+                
+                <Button
+                    variant="outline"
+                    onClick={() => handleImagenesUnidadNodos()}
+                    className="h-9 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs transition gap-2 whitespace-nowrap"
+                >
+                    <i className="fas fa-network-wired text-blue-500"></i>
+                    <span className="hidden lg:inline">Galería Nodos</span>
+                </Button>
+
+                <Button
+                    variant="outline"
+                    onClick={() => handleImagenesDiagramas()}
+                    className="h-9 bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200 shadow-xs transition gap-2 whitespace-nowrap"
+                >
+                    <i className="fas fa-project-diagram text-purple-500"></i>
+                    <span className="hidden lg:inline">Galería Diagramas</span>
+                </Button>
             </div>
 
-            {/* Tabla Card */}
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden w-full">
-                <Table>
-                    <TableHeader className="bg-slate-50/50">
+            {/* Tabla (Body scrollable del contenedor) */}
+            <div className="overflow-auto flex-1 w-full min-h-0">
+                <Table className="relative">
+                    <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
                         <TableRow>
-                            <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Ubicación / Área</TableHead>
-                            <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Unidad / IP Switch</TableHead>
+                            <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Ubicación / Unidad</TableHead>
+                            <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Área / IP Switch</TableHead>
                             <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Detalles de Cable</TableHead>
                             <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Estado</TableHead>
                             <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs text-center">Faltantes</TableHead>
@@ -1031,25 +1439,52 @@ const tablaRegistros = () => {
                             </TableRow>
                         ) : (
                             displayedNodos.slice(page * rowsPerPage, (page + 1) * rowsPerPage).map((nodoData, index) => {
-                                const rowClass = "hover:bg-slate-50/80 transition-colors";
+                                const isSelected = selectedRowId === nodoData.Id;
+                                const rowClass = `transition-colors ${
+                                    isSelected 
+                                        ? 'bg-blue-50/80 hover:bg-blue-100/60' 
+                                        : 'hover:bg-slate-50/80'
+                                } ${
+                                    nodoData.TieneImagenes === 0 
+                                        ? 'bg-orange-50/40' 
+                                        : ''
+                                }`;
+
+                                const firstCellBorderClass = isSelected
+                                    ? 'shadow-[inset_4px_0_0_0_#3b82f6]'
+                                    : (nodoData.TieneImagenes === 0 ? 'shadow-[inset_4px_0_0_0_#fb923c]' : 'border-l-4 border-transparent');
 
                                 return (
                                     <TableRow key={index} className={rowClass}>
-                                        {/* Ubicación / Área */}
-                                        <TableCell className="py-4">
-                                            <div className="font-semibold text-slate-900">{nodoData.Ubicacion}</div>
-                                            <div className="text-xs text-slate-400 mt-0.5">{nodoData.Area || 'Sin área asignada'}</div>
+                                        {/* Ubicación / Unidad */}
+                                        <TableCell className={`py-3 ${firstCellBorderClass}`}>
+                                            <div className="font-semibold text-slate-900 flex items-center gap-2">
+                                                {nodoData.Ubicacion}
+                                                {nodoData.TieneImagenes === 0 && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <i className="fas fa-camera-slash text-orange-500 text-[10px] animate-pulse" title="Sin imágenes"></i>
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                <p>Faltan fotografías de este nodo</p>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-slate-500 mt-0.5">{nodoData.Unidad || 'Sin unidad'}</div>
                                         </TableCell>
 
-                                        {/* Unidad / IP Switch */}
-                                        <TableCell className="py-4">
-                                            <div className="font-medium text-slate-700">{nodoData.Unidad}</div>
+                                        {/* Área / IP Switch */}
+                                        <TableCell className="py-3">
+                                            <div className="font-medium text-slate-700">{nodoData.Area || 'Sin área asignada'}</div>
                                             <div className="text-xs font-mono text-slate-400 mt-0.5">{nodoData.IpSwitch || 'Sin IP'}</div>
                                         </TableCell>
 
                                         {/* Detalles de Cable */}
-                                        <TableCell className="py-4">
-                                            <div className={`font-medium text-xs rounded px-1.5 py-0.5 inline-block ${
+                                        <TableCell className="py-3">
+                                            <div className={`font-medium text-[11px] rounded px-1.5 py-0.5 inline-block ${
                                                 parseInt(nodoData.CategoriaCable) < 6
                                                     ? 'bg-red-50 text-red-700 border border-red-200'
                                                     : 'bg-slate-100/60 text-slate-700'
@@ -1057,16 +1492,16 @@ const tablaRegistros = () => {
                                                 Categoría: {nodoData.CategoriaCable}
                                                 {parseInt(nodoData.CategoriaCable) < 6 && <i className="fas fa-exclamation-circle ml-1 text-red-500"></i>}
                                             </div>
-                                            <div className="text-xs text-slate-400 mt-1">
+                                            <div className="text-[11px] text-slate-400 mt-0.5">
                                                 Puerto: {nodoData.Puerto} • Longitud: {nodoData.Longitud}m • {nodoData.AnioInstalacion}
                                             </div>
                                         </TableCell>
 
                                         {/* Estado */}
-                                        <TableCell className="py-4">
+                                        <TableCell className="py-3">
                                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                                                nodoData.EstadoCable === 'Bueno' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                nodoData.EstadoCable === 'Regular' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                nodoData.EstadoCable?.toLowerCase() === 'bueno' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                nodoData.EstadoCable?.toLowerCase() === 'regular' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                                                 'bg-red-50 text-red-700 border-red-200'
                                             }`}>
                                                 {nodoData.EstadoCable}
@@ -1074,7 +1509,7 @@ const tablaRegistros = () => {
                                         </TableCell>
 
                                         {/* Faltantes */}
-                                        <TableCell className="py-4 text-center">
+                                        <TableCell className="py-3 text-center">
                                             <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold ${
                                                 parseInt(nodoData.Nodos_faltantes) > 0
                                                     ? 'bg-red-50 text-red-700 border border-red-200'
@@ -1088,7 +1523,7 @@ const tablaRegistros = () => {
 
 
                                         {/* Acciones */}
-                                        <TableCell className="py-4 text-center">
+                                        <TableCell className="py-3 text-center">
                                             <div className="flex items-center justify-center gap-1.5">
                                                 {/* Ver detalles */}
                                                 <TooltipProvider>
@@ -1168,8 +1603,8 @@ const tablaRegistros = () => {
                 </Table>
             </div>
 
-            {/* Paginación */}
-            <div className="flex items-center justify-between px-4 py-4 bg-white border border-slate-200 rounded-xl shadow-xs w-full">
+            {/* Paginación (Footer del contenedor) */}
+            <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-slate-200/80 w-full mt-auto">
                 <div className="flex items-center gap-2 text-sm text-slate-500">
                     <span>Registros por página:</span>
                     <select
@@ -1212,6 +1647,7 @@ const tablaRegistros = () => {
                     </div>
                 </div>
             </div>
+        </div>
 
             {/* ===================== MODALES (SHADCN DIALOGS) ===================== */}
 
@@ -1575,8 +2011,8 @@ const tablaRegistros = () => {
 
             {/* 5. Modal de Imágenes de los Nodos (Búsqueda General) */}
             <Dialog open={!!selectedImagesUnidadNodos} onOpenChange={(open) => !open && setSelectedImagesUnidadNodos(null)}>
-                <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-6 rounded-xl shadow-lg border border-slate-200">
-                    <DialogHeader>
+                <DialogContent className="sm:max-w-4xl h-[90vh] flex flex-col overflow-hidden bg-white p-0 rounded-xl shadow-lg border border-slate-200">
+                    <DialogHeader className="px-6 py-4 border-b border-slate-100 flex-shrink-0">
                         <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
                             <i className="fas fa-network-wired text-green-700"></i>
                             Imágenes de los Nodos
@@ -1591,10 +2027,11 @@ const tablaRegistros = () => {
                         );
 
                         return (
-                            <div className="space-y-4">
+                            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                                 {totalNodosImages > 0 ? (
                                     <>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                             {nodosImagesPage.map((image, index) => {
                                                 const fileName = image.ImagenURL.split('/').pop();
                                                 const timestampMatch = fileName.match(/(\d+)\.\w+$/);
@@ -1610,28 +2047,53 @@ const tablaRegistros = () => {
                                                 const isSolventado = image.ImagenURL.toLowerCase().includes('solventado');
 
                                                 return (
-                                                    <div key={index} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs">
-                                                        <div className="mb-2">
-                                                            <div className="font-semibold text-slate-800 text-xs truncate" title={image.Ubicacion}>{image.Ubicacion}</div>
-                                                            <span className={`text-[10px] font-semibold ${isSolventado ? 'text-green-600' : 'text-slate-400'}`}>
+                                                    <div key={index} className="group relative bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-[255px]">
+                                                        <div
+                                                            className="h-36 w-full bg-slate-100 relative cursor-pointer overflow-hidden flex items-center justify-center"
+                                                            onClick={() => setSelectedImage({ ...image, isNodeImage: true })}
+                                                        >
+                                                            <img
+                                                                src={`${API_URL}${image.ImagenURL}`}
+                                                                alt={`Imagen ${index + 1}`}
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                            />
+                                                            <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[9px] font-bold shadow-sm z-10 ${
+                                                                isSolventado 
+                                                                    ? 'bg-green-100 text-green-800 border border-green-200' 
+                                                                    : 'bg-slate-100 text-slate-700 border border-slate-200'
+                                                            }`}>
                                                                 {isSolventado ? 'Solventado' : 'General'}
                                                             </span>
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                                                                <i className="fas fa-expand text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 drop-shadow-md"></i>
+                                                            </div>
                                                         </div>
-                                                        <img
-                                                            src={`${API_URL}${image.ImagenURL}`}
-                                                            alt={`Imagen ${index + 1}`}
-                                                            className="w-full h-32 object-cover rounded-md cursor-pointer hover:opacity-95 transition mb-2"
-                                                            loading="lazy"
-                                                            decoding="async"
-                                                            onClick={() => handleImageClick(image.ImagenURL)}
-                                                        />
-                                                        <div className="text-[10px] text-slate-400 text-right">{formattedDate}</div>
+
+                                                        <div className="p-3 flex-1 flex flex-col justify-between bg-white z-10 border-t border-slate-100">
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-xs font-semibold text-slate-800 line-clamp-1 leading-tight mb-1" title={image.Ubicacion}>
+                                                                    {image.Ubicacion}
+                                                                </p>
+                                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                                    <i className="fas fa-building text-slate-400 text-[10px]"></i>
+                                                                    <span className="text-[10px] text-[#006341] font-semibold truncate max-w-full" title={getUnidadInfo(image.ReferenciaUnidad, image.NombreUnidad)}>
+                                                                        {getUnidadInfo(image.ReferenciaUnidad, image.NombreUnidad)}
+                                                                    </span>
+                                                                </div>
+                                                                <p className="text-[9px] text-slate-400 mt-auto uppercase tracking-wider font-medium text-right">
+                                                                    {formattedDate}
+                                                                </p>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
+                                            </div>
                                         </div>
 
-                                        <div className="flex items-center justify-between px-2 py-3 border-t border-slate-100 mt-4">
+                                        <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
                                             <div className="flex items-center gap-2 text-sm text-slate-500">
                                                 <span>Imágenes por página:</span>
                                                 <select
@@ -1645,7 +2107,6 @@ const tablaRegistros = () => {
                                                     <option value={6}>6</option>
                                                     <option value={12}>12</option>
                                                     <option value={24}>24</option>
-                                                    <option value={48}>48</option>
                                                 </select>
                                             </div>
                                             <div className="flex items-center gap-4 text-sm">
@@ -1664,12 +2125,14 @@ const tablaRegistros = () => {
                                         </div>
                                     </>
                                 ) : (
-                                    <p className="text-slate-400 text-center py-6 italic">No hay imágenes de los nodos disponibles.</p>
+                                    <div className="flex-1 px-6 py-6">
+                                        <p className="text-slate-400 text-center italic">No hay imágenes de los nodos disponibles.</p>
+                                    </div>
                                 )}
                             </div>
                         );
                     })()}
-                    <DialogFooter>
+                    <DialogFooter className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
                         <Button onClick={() => setSelectedImagesUnidadNodos(null)} variant="outline">
                             Cerrar
                         </Button>
@@ -1679,15 +2142,15 @@ const tablaRegistros = () => {
 
             {/* 6. Modal de Imágenes de MDF/IDF */}
             <Dialog open={!!selectedImagesUnidad} onOpenChange={(open) => !open && setSelectedImagesUnidad(null)}>
-                <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-white p-6 rounded-xl shadow-lg border border-slate-200">
-                    <DialogHeader className="flex flex-row items-center justify-between">
+                <DialogContent className="sm:max-w-4xl h-[90vh] flex flex-col overflow-hidden bg-white p-0 rounded-xl shadow-lg border border-slate-200">
+                    <DialogHeader className="px-6 py-4 border-b border-slate-100 flex flex-row items-center justify-between flex-shrink-0">
                         <DialogTitle className="text-xl font-bold text-slate-900 flex items-center gap-2">
                             <i className="fas fa-images text-green-700"></i>
                             Imágenes de MDF e IDF
                         </DialogTitle>
                         {user?.role === 'administrador' && (
                             <Button
-                                className="bg-green-700 hover:bg-green-800 text-white font-medium gap-2 h-9 px-3 text-xs"
+                                className="bg-green-700 hover:bg-green-800 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
                                 onClick={() => {
                                     setMdfIdfFormData(prev => ({ ...prev, unidadForm: filtros.unidad, isNew: 'Nuevo' }));
                                     setShowMdfIdfForm(true);
@@ -1706,10 +2169,11 @@ const tablaRegistros = () => {
                         );
 
                         return (
-                            <div className="space-y-4">
+                            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
                                 {totalMdfImages > 0 ? (
                                     <>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                             {mdfImagesPage.map((image, index) => {
                                                 const fileName = image.ImagenURL.split('/').pop();
                                                 const timestampMatch = fileName.match(/(\d+)\.\w+$/);
@@ -1723,28 +2187,80 @@ const tablaRegistros = () => {
                                                     : 'Fecha no disponible';
 
                                                 return (
-                                                    <div key={index} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs">
-                                                        <div className="mb-2">
-                                                            <div className="font-semibold text-slate-800 text-xs truncate">Código: {image.CodigoMDFIDF}</div>
-                                                            <span className="text-[10px] text-slate-400 font-medium">
-                                                                Tipo: {image.Tipo} • {image.Nombre || 'Sin nombre'}
-                                                            </span>
-                                                        </div>
-                                                        <img
-                                                            src={`${API_URL}${image.ImagenURL}?v=${imgVersion}`}
-                                                            alt={image.Nombre || 'Imagen'}
-                                                            className="w-full h-32 object-cover rounded-md cursor-pointer hover:opacity-95 transition mb-2"
-                                                            loading="lazy"
-                                                            decoding="async"
+                                                    <div key={index} className="group relative bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-[305px]">
+                                                        <div
+                                                            className="h-44 w-full bg-slate-100 relative cursor-pointer overflow-hidden flex items-center justify-center"
                                                             onClick={() => setSelectedImage({ ...image, isMdfIdf: true })}
-                                                        />
-                                                        <div className="text-[10px] text-slate-400 text-right">{formattedDate}</div>
+                                                        >
+                                                            <img
+                                                                src={`${API_URL}${image.ImagenURL}?v=${imgVersion}`}
+                                                                alt={image.Nombre || 'Imagen'}
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                                                                <i className="fas fa-expand text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 drop-shadow-md"></i>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="p-4 flex-1 flex flex-col justify-between bg-white z-10 border-t border-slate-100">
+                                                            <div className="flex justify-between items-start gap-2 mb-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-semibold text-slate-800 line-clamp-1 leading-tight">
+                                                                        Código: {image.CodigoMDFIDF || 'Sin Código'}
+                                                                    </p>
+                                                                    <span className="text-[10px] text-slate-500 font-medium block truncate">
+                                                                        Tipo: {image.Tipo} {image.Nombre ? `• ${image.Nombre}` : ''}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-1.5 mt-1.5 mb-1">
+                                                                        <i className="fas fa-building text-slate-400 text-xs"></i>
+                                                                        <span className="text-xs text-[#006341] font-semibold truncate max-w-full" title={getUnidadInfo(image.ReferenciaUnidad, image.NombreUnidad)}>
+                                                                            {getUnidadInfo(image.ReferenciaUnidad, image.NombreUnidad)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-medium">
+                                                                        {formattedDate}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-auto">
+                                                                {user?.role === 'administrador' && (
+                                                                    <>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleEditMdfIdfClick(image);
+                                                                            }}
+                                                                            className="h-8 px-2 text-slate-500 hover:text-green-700 hover:bg-green-50"
+                                                                        >
+                                                                            <i className="fas fa-edit mr-1.5"></i> Editar
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteMdfIdf(image.Id);
+                                                                            }}
+                                                                            className="h-8 px-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                                                        >
+                                                                            <i className="fas fa-trash-alt"></i>
+                                                                        </Button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 );
                                             })}
+                                            </div>
                                         </div>
 
-                                        <div className="flex items-center justify-between px-2 py-3 border-t border-slate-100 mt-4">
+                                        <div className="flex items-center justify-between px-6 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
                                             <div className="flex items-center gap-2 text-sm text-slate-500">
                                                 <span>Imágenes por página:</span>
                                                 <select
@@ -1758,7 +2274,6 @@ const tablaRegistros = () => {
                                                     <option value={6}>6</option>
                                                     <option value={12}>12</option>
                                                     <option value={24}>24</option>
-                                                    <option value={48}>48</option>
                                                 </select>
                                             </div>
                                             <div className="flex items-center gap-4 text-sm">
@@ -1777,12 +2292,14 @@ const tablaRegistros = () => {
                                         </div>
                                     </>
                                 ) : (
-                                    <p className="text-slate-400 text-center py-6 italic">No hay imágenes MDF/IDF disponibles.</p>
+                                    <div className="flex-1 px-6 py-6">
+                                        <p className="text-slate-400 text-center italic">No hay imágenes MDF/IDF disponibles.</p>
+                                    </div>
                                 )}
                             </div>
                         );
                     })()}
-                    <DialogFooter>
+                    <DialogFooter className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
                         <Button onClick={() => setSelectedImagesUnidad(null)} variant="outline">
                             Cerrar
                         </Button>
@@ -1792,8 +2309,8 @@ const tablaRegistros = () => {
 
             {/* 7. Modal de Imagen en Tamaño Completo */}
             <Dialog open={!!selectedImage} onOpenChange={(open) => !open && setSelectedImage(null)}>
-                <DialogContent className="sm:max-w-3xl bg-white p-6 rounded-xl shadow-lg border border-slate-200">
-                    <DialogHeader>
+                <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col overflow-hidden bg-white p-0 rounded-xl shadow-lg border border-slate-200">
+                    <DialogHeader className="px-6 py-4 border-b border-slate-100 flex-shrink-0">
                         <DialogTitle className="text-lg font-bold text-slate-800">
                             Vista de Imagen
                         </DialogTitle>
@@ -1801,34 +2318,120 @@ const tablaRegistros = () => {
                     {selectedImage && (() => {
                         const imgUrl = typeof selectedImage === 'string' 
                             ? selectedImage 
-                            : `${API_URL}${selectedImage.ImagenURL}${selectedImage.isMdfIdf ? '?v=' + imgVersion : ''}`;
+                            : `${API_URL}${selectedImage.ImagenURL}${
+                                selectedImage.isMdfIdf 
+                                    ? '?v=' + imgVersion 
+                                    : (selectedImage.isDiagrama 
+                                        ? '?v=' + imgDiagramasVersion 
+                                        : '')
+                              }`;
+
+                        const getFormattedDateForSelected = () => {
+                            if (selectedImage.FechaCaptura) return selectedImage.FechaCaptura;
+                            const url = selectedImage.ImagenURL;
+                            if (!url) return '';
+                            const fileName = url.split('/').pop();
+                            const timestampMatch = fileName.match(/(\d+)\.\w+$/);
+                            const timestamp = timestampMatch ? parseInt(timestampMatch[1], 10) : null;
+                            return timestamp && new Date(timestamp).getFullYear() >= 2010
+                                ? new Date(timestamp).toLocaleDateString('es-MX', {
+                                    day: '2-digit',
+                                    month: '2-digit',
+                                    year: 'numeric',
+                                })
+                                : '';
+                        };
+
                         return (
-                            <div className="flex flex-col items-center py-2 space-y-4">
+                            <div className="flex-1 overflow-y-auto px-6 py-4 flex flex-col items-center space-y-4">
                                 <img
                                     src={imgUrl}
                                     alt="Imagen completa"
-                                    className="max-h-[60vh] object-contain rounded-md border border-slate-100 shadow-md"
+                                    className="max-h-[50vh] object-contain rounded-md border border-slate-100 shadow-md"
+                                    loading="lazy"
                                 />
+                                {typeof selectedImage === 'object' && (selectedImage.isDiagrama || selectedImage.isMdfIdf || selectedImage.isNodeImage) && (
+                                    <div className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-left shadow-xs">
+                                        {selectedImage.isMdfIdf && (
+                                            <div>
+                                                <span className="text-[10px] uppercase font-bold text-slate-400">Detalles MDF / IDF</span>
+                                                <p className="text-sm font-semibold text-slate-800">
+                                                    Código: {selectedImage.CodigoMDFIDF || 'Sin código'} • {selectedImage.Tipo}
+                                                </p>
+                                                {selectedImage.Nombre && (
+                                                    <p className="text-xs text-slate-600 font-medium">Nombre: {selectedImage.Nombre}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {selectedImage.isNodeImage && (
+                                            <div>
+                                                <span className="text-[10px] uppercase font-bold text-slate-400">Detalles del Nodo</span>
+                                                <p className="text-sm font-semibold text-slate-800">
+                                                    Ubicación: {selectedImage.Ubicacion}
+                                                </p>
+                                            </div>
+                                        )}
+                                        {selectedImage.isDiagrama && (
+                                            <div>
+                                                <span className="text-[10px] uppercase font-bold text-slate-400">Detalles del Diagrama</span>
+                                                <p className="text-sm font-semibold text-slate-800">
+                                                    {selectedImage.Nombre || 'Sin nombre'}
+                                                </p>
+                                            </div>
+                                        )}
+                                        
+                                        <div className="text-xs font-semibold text-[#006341] flex items-center gap-1.5">
+                                            <i className="fas fa-building text-slate-400"></i>
+                                            <span>
+                                                Unidad: {getUnidadInfo(selectedImage.ReferenciaUnidad, selectedImage.NombreUnidad)}
+                                            </span>
+                                        </div>
+
+                                        {getFormattedDateForSelected() && (
+                                            <p className="text-[10px] text-slate-400 font-medium">
+                                                Fecha de captura: {getFormattedDateForSelected()}
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                                 <a 
                                     href={imgUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer" 
-                                    className="text-xs text-green-700 hover:underline break-all"
+                                    className="text-xs text-[#006341] hover:underline break-all font-semibold animate-pulse"
                                 >
                                     Abrir en pestaña nueva
                                 </a>
                                 {typeof selectedImage === 'object' && selectedImage.isMdfIdf && user?.role === 'administrador' && (
                                     <div className="flex gap-2 pt-2">
                                         <Button
-                                            className="bg-amber-600 hover:bg-amber-700 text-white gap-2"
+                                            className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-medium shadow-xs"
                                             onClick={() => handleEditMdfIdfClick(selectedImage)}
                                         >
                                             <i className="fas fa-edit"></i>
                                             <span>Editar</span>
                                         </Button>
                                         <Button
-                                            className="bg-red-600 hover:bg-red-700 text-white gap-2"
+                                            className="bg-red-600 hover:bg-red-700 text-white gap-2 font-medium shadow-xs"
                                             onClick={() => handleDeleteMdfIdf(selectedImage.Id)}
+                                        >
+                                            <i className="fas fa-trash"></i>
+                                            <span>Eliminar</span>
+                                        </Button>
+                                    </div>
+                                )}
+                                {typeof selectedImage === 'object' && selectedImage.isDiagrama && user?.role === 'administrador' && (
+                                    <div className="flex gap-2 pt-2">
+                                        <Button
+                                            className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-medium shadow-xs"
+                                            onClick={() => handleEditDiagramaClick(selectedImage)}
+                                        >
+                                            <i className="fas fa-edit"></i>
+                                            <span>Editar</span>
+                                        </Button>
+                                        <Button
+                                            className="bg-red-600 hover:bg-red-700 text-white gap-2 font-medium shadow-xs"
+                                            onClick={() => handleDeleteDiagrama(selectedImage.Id)}
                                         >
                                             <i className="fas fa-trash"></i>
                                             <span>Eliminar</span>
@@ -1838,7 +2441,7 @@ const tablaRegistros = () => {
                             </div>
                         );
                     })()}
-                    <DialogFooter>
+                    <DialogFooter className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex-shrink-0">
                         <Button onClick={() => setSelectedImage(null)} variant="outline">
                             Cerrar
                         </Button>
@@ -1848,7 +2451,7 @@ const tablaRegistros = () => {
 
             {/* 8. Modal de Formulario MDF / IDF (Añadir / Editar) */}
             <Dialog open={showMdfIdfForm} onOpenChange={(open) => !open && handleCloseMdfIdfForm()}>
-                <DialogContent className="sm:max-w-lg bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="sm:max-w-lg bg-white p-6 rounded-xl shadow-lg border border-slate-200">
                     <DialogHeader>
                         <DialogTitle className="text-lg font-bold text-slate-800">
                             {isEditingMdfIdf ? 'Editar Imagen' : 'Añadir Imagen MDF / IDF'}
@@ -1885,17 +2488,11 @@ const tablaRegistros = () => {
                         {!isEditingMdfIdf && (
                             <div className="flex flex-col gap-1.5">
                                 <label className="text-xs font-semibold uppercase text-slate-500">Unidad</label>
-                                <select
+                                <SearchableUnidadSelect
                                     value={mdfIdfFormData.unidadForm}
-                                    onChange={(e) => handleFormUnidadChange(e.target.value)}
-                                    className="border border-slate-200 rounded-lg p-2 text-sm bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 transition-all"
-                                    required
-                                >
-                                    <option value="">Seleccione una unidad</option>
-                                    {unidades.map(u => (
-                                        <option key={u.ref} value={u.ref}>{u.nombre}</option>
-                                    ))}
-                                </select>
+                                    onChange={(val) => handleFormUnidadChange(val)}
+                                    unidades={unidades}
+                                />
                             </div>
                         )}
 
@@ -2005,6 +2602,214 @@ const tablaRegistros = () => {
                                 Cancelar
                             </Button>
                             <Button type="submit" className="bg-green-700 hover:bg-green-800 text-white font-semibold">
+                                Guardar
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal de Galería de Diagramas de Red */}
+            <Dialog open={showDiagramasModal} onOpenChange={(open) => !open && setShowDiagramasModal(false)}>
+                <DialogContent className="sm:max-w-4xl h-[90vh] flex flex-col overflow-hidden bg-white p-0 rounded-xl shadow-lg border border-slate-200">
+                    <DialogHeader className="px-6 py-4 border-b border-slate-100 flex flex-row items-center justify-between flex-shrink-0">
+                        <DialogTitle className="text-xl font-bold flex items-center gap-2 text-slate-900">
+                            <i className="fas fa-project-diagram text-purple-600"></i>
+                            Galería Diagramas de Red
+                        </DialogTitle>
+                        {user?.role === 'administrador' && (
+                            <Button
+                                onClick={() => handleUploadClickDiagrama()}
+                                className="bg-purple-600 hover:bg-purple-700 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
+                            >
+                                <i className="fas fa-plus"></i> Añadir Diagrama
+                            </Button>
+                        )}
+                    </DialogHeader>
+
+                    {(() => {
+                        const allImages = fetchedUnitDiagramas;
+                        const totalImages = allImages.length;
+                        const startIndex = imgDiagramasPage * imgDiagramasPerPage;
+                        const paginatedImages = allImages.slice(startIndex, startIndex + imgDiagramasPerPage);
+
+                        return (
+                            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                                {totalImages > 0 ? (
+                                    <>
+                                        <div className="flex-1 overflow-y-auto px-6 py-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                                {paginatedImages.map((img) => (
+                                                    <div key={img.Id} className="group relative bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl transition-all duration-300 hover:-translate-y-1 flex flex-col h-[305px]">
+                                                        <div
+                                                            className="h-48 w-full bg-slate-100 relative cursor-pointer overflow-hidden flex items-center justify-center"
+                                                            onClick={() => setSelectedImage({ ...img, isDiagrama: true })}
+                                                        >
+                                                            <img
+                                                                src={`${API_URL}${img.ImagenURL}?v=${imgDiagramasVersion}`}
+                                                                alt="Diagrama de red"
+                                                                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                            />
+                                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
+                                                                <i className="fas fa-expand text-white text-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 drop-shadow-md"></i>
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="p-4 flex-1 flex flex-col justify-between bg-white z-10 border-t border-slate-100">
+                                                            <div className="flex justify-between items-start gap-2 mb-2">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-semibold text-slate-800 line-clamp-2 leading-tight">
+                                                                        {img.Nombre || "Sin nombre"}
+                                                                    </p>
+                                                                    <div className="flex items-center gap-1.5 mt-1.5 mb-1">
+                                                                        <i className="fas fa-building text-slate-400 text-xs"></i>
+                                                                        <span className="text-xs text-[#006341] font-semibold truncate max-w-full" title={getUnidadInfo(img.ReferenciaUnidad, null)}>
+                                                                            {getUnidadInfo(img.ReferenciaUnidad, null)}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider font-medium">
+                                                                        {img.FechaCaptura || "Sin fecha"}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-auto">
+                                                                {user?.role === 'administrador' && (
+                                                                    <>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleEditDiagramaClick(img);
+                                                                            }}
+                                                                            className="h-8 px-2 text-slate-500 hover:text-purple-600 hover:bg-purple-50"
+                                                                        >
+                                                                            <i className="fas fa-edit mr-1.5"></i> Editar
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                handleDeleteDiagrama(img.Id);
+                                                                            }}
+                                                                            className="h-8 px-2 text-slate-500 hover:text-red-600 hover:bg-red-50"
+                                                                        >
+                                                                            <i className="fas fa-trash-alt"></i>
+                                                                        </Button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {totalImages > imgDiagramasPerPage && (
+                                            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50 flex justify-between items-center flex-shrink-0">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setImgDiagramasPage(prev => Math.max(0, prev - 1))}
+                                                    disabled={imgDiagramasPage === 0}
+                                                    className="h-8 text-xs bg-white"
+                                                >
+                                                    <i className="fas fa-chevron-left mr-1.5"></i> Anterior
+                                                </Button>
+                                                <span className="text-xs font-medium text-slate-600">
+                                                    Página {imgDiagramasPage + 1} de {Math.ceil(totalImages / imgDiagramasPerPage)}
+                                                </span>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setImgDiagramasPage(prev => prev + 1)}
+                                                    disabled={(imgDiagramasPage + 1) * imgDiagramasPerPage >= totalImages}
+                                                    className="h-8 text-xs bg-white"
+                                                >
+                                                    Siguiente <i className="fas fa-chevron-right ml-1.5"></i>
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-4">
+                                        <i className="fas fa-folder-open text-6xl text-slate-200"></i>
+                                        <p className="text-lg font-medium">No hay diagramas registrados para esta búsqueda.</p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                    <DialogFooter className="px-6 py-4 border-t border-slate-100 flex-shrink-0">
+                        <Button onClick={() => setShowDiagramasModal(false)} variant="outline">
+                            Cerrar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal de Formulario Diagramas de Red */}
+            <Dialog open={showDiagramasForm} onOpenChange={(open) => !open && handleCloseDiagramasForm()}>
+                <DialogContent onOpenAutoFocus={(e) => e.preventDefault()} className="sm:max-w-md bg-white p-6 rounded-xl shadow-lg border border-slate-200">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold text-slate-800">
+                            {isEditingDiagramas ? 'Editar Diagrama' : 'Añadir Diagrama de Red'}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={handleSubmitDiagrama} className="space-y-4 py-2">
+                        {!isEditingDiagramas && (
+                            <div className="flex flex-col gap-1.5">
+                                <label className="text-xs font-semibold uppercase text-slate-500">Unidad</label>
+                                <SearchableUnidadSelect
+                                    value={diagramasFormData.unidadForm}
+                                    onChange={(val) => setDiagramasFormData({ ...diagramasFormData, unidadForm: val })}
+                                    unidades={unidades}
+                                />
+                            </div>
+                        )}
+
+                        {isEditingDiagramas && (
+                            <div className="flex flex-col gap-1.5">
+                                <span className="text-xs font-semibold uppercase text-slate-500">Unidad Seleccionada:</span>
+                                <span className="text-sm text-slate-800 font-medium bg-slate-50 p-2 rounded-lg border border-slate-200">
+                                    {unidades.find(u => String(u.ref) === String(diagramasFormData.unidadForm))?.nombre || diagramasFormData.unidadForm}
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold uppercase text-slate-500 font-medium">Nombre (opcional)</label>
+                            <input
+                                type="text"
+                                value={diagramasFormData.nombre}
+                                onChange={(e) => setDiagramasFormData({ ...diagramasFormData, nombre: e.target.value })}
+                                className="border border-slate-200 rounded-lg p-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 transition-all"
+                                placeholder="Ej. Diagrama Piso 1"
+                            />
+                        </div>
+
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-xs font-semibold uppercase text-slate-500 font-medium">
+                                Imagen {isEditingDiagramas ? '(opcional para reemplazar)' : '*'}
+                            </label>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => setDiagramasFormData({ ...diagramasFormData, file: e.target.files[0] })}
+                                className="border border-slate-200 rounded-lg p-2 text-sm bg-slate-50 focus:bg-white focus:outline-none file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer"
+                                required={!isEditingDiagramas}
+                            />
+                        </div>
+
+                        <DialogFooter className="pt-4 flex gap-2">
+                            <Button type="button" variant="outline" onClick={handleCloseDiagramasForm}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" className="bg-purple-700 hover:bg-purple-800 text-white font-semibold">
                                 Guardar
                             </Button>
                         </DialogFooter>

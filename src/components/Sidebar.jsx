@@ -132,7 +132,8 @@ export default function Sidebar() {
         {/* Info del usuario */}
         {user && !sidebarCollapsed && (
           <div className="mb-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-            <p className="text-white text-xs font-semibold leading-tight truncate">{user.username}</p>
+            <p className="text-white text-sm font-semibold leading-tight truncate">{user.usuario}</p>
+            <p className="text-green-200/70 text-[10px] leading-tight truncate mt-0.5">{user.zona ? `Zona: ${user.zona}` : 'Todas las Zonas'}</p>
           </div>
         )}
         <button

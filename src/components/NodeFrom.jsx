@@ -10,12 +10,14 @@ import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/comp
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 
 const API_URL = 'http://localhost:5090';
 
 
 const NodeFrom = ({ onAddNodo, onClose }) => {
     const { user } = useContext(AuthContext);
+    const { success, error: toastError, warn } = useNotifications();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [formData, setFormData] = useState({ // Estado para almacenar los datos del formulario
         Ubicacion: '',
@@ -129,13 +131,13 @@ const NodeFrom = ({ onAddNodo, onClose }) => {
         // Verificar si el material ya está en la lista
         const existe = materialesSeleccionados.some(m => m.id === materialActual.id);
         if (existe) {
-            alert('Este material ya fue agregado');
+            warn('Este material ya fue agregado');
             return;
         }
 
         // Validar cantidad para piezas
         if (material.UnidadMedida === 'piezas' && !Number.isInteger(Number(materialActual.cantidad))) {
-            alert('Para materiales en piezas, la cantidad debe ser un número entero');
+            warn('Para materiales en piezas, la cantidad debe ser un número entero');
             return;
         }
 
@@ -323,7 +325,7 @@ const NodeFrom = ({ onAddNodo, onClose }) => {
                     'Content-Type': 'multipart/form-data', // Especificar el tipo de contenido
                 },
             });
-            alert('Nodo registrado'); // Mostrar un mensaje de éxito
+            success('Nodo registrado con éxito'); // Mostrar un mensaje de éxito
 
             // Limpiar el formulario
             setFormData({
@@ -356,7 +358,7 @@ const NodeFrom = ({ onAddNodo, onClose }) => {
             }
         } catch (error) {
             console.error('Error al crear el nodo:', error);
-            alert('Error al crear el nodo');
+            toastError('Error al crear el nodo');
         } finally {
             setIsSubmitting(false);
         }

@@ -1,11 +1,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
-export default function NodeAttentionModal({ nodo, title, onClose, onSolventarParcialmente, onSolventarCompletamente, handleImageClick, showActions = true, completeActionText = "Solventar" }) {
+export default function NodeAttentionModal({ nodo, title, onClose, onSolventarParcialmente, onSolventarCompletamente, handleImageClick, showActions = true, completeActionText = "Solventar", historialLabel = "Historial de registros", historialType = "mantenimiento" }) {
+    const [sortOrder, setSortOrder] = useState('desc'); // 'desc' para más recientes primero, 'asc' para más viejos primero
+
     if (!nodo) return null;
     return (
         <Dialog open={!!nodo} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[90vh] overflow-y-auto bg-white p-8 rounded-xl border border-slate-200 shadow-xl">
+            <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto bg-white p-8 rounded-xl border border-slate-200 shadow-xl">
                 <DialogHeader>
                     <DialogTitle className="text-xl font-bold flex items-center gap-2 text-slate-800 border-b pb-4 mb-4">
                         <i className="fas fa-check-circle text-emerald-600"></i> {title}
@@ -30,6 +33,85 @@ export default function NodeAttentionModal({ nodo, title, onClose, onSolventarPa
                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 border-dashed text-center">
                             <i className="fas fa-image text-slate-300 text-3xl mb-2 block"></i>
                             <p className="text-sm text-slate-400 italic">No hay imágenes de evidencia registradas.</p>
+                        </div>
+                    )}
+
+                    {/* Historial de Atención o Otras Atenciones dependiendo de historialType */}
+                    {historialType === "mantenimiento" && nodo.mantenimiento && nodo.mantenimiento.length > 0 && (
+                        <div className="mt-6 border-t border-slate-200 pt-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <p className="text-sm font-semibold text-slate-700">{historialLabel}:</p>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-7 text-xs text-slate-500 hover:text-slate-700"
+                                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                >
+                                    <i className={`fas fa-sort-amount-${sortOrder === 'desc' ? 'down' : 'up'} mr-1`}></i>
+                                    {sortOrder === 'desc' ? 'Más recientes primero' : 'Más antiguos primero'}
+                                </Button>
+                            </div>
+                            <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                {[...nodo.mantenimiento].sort((a, b) => {
+                                    return sortOrder === 'desc' ? b.Id - a.Id : a.Id - b.Id;
+                                }).slice(0, 5).map(reg => (
+                                    <div key={reg.Id} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60 shadow-xs">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-slate-500">
+                                                <i className="far fa-clock mr-1"></i> {reg.FechaCambio}
+                                            </span>
+                                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                                                {reg.EstadoAnterior === true ? 'Pendiente' : 'Resuelto'} &rarr; {reg.EstadoNuevo === true ? 'Pendiente' : 'Resuelto'}
+                                            </span>
+                                        </div>
+                                        {reg.ObservacionesUsuario && (
+                                            <p className="text-sm text-slate-700 mt-1"><span className="font-semibold text-slate-500">Observación:</span> {reg.ObservacionesUsuario}</p>
+                                        )}
+                                        {reg.ObservacionesServidor && (
+                                            <p className="text-xs text-slate-400 mt-1"><span className="font-medium">Sistema:</span> {reg.ObservacionesServidor}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {historialType === "otrasAtenciones" && nodo.otrasAtenciones && nodo.otrasAtenciones.length > 0 && (
+                        <div className="mt-6 border-t border-slate-200 pt-4">
+                            <div className="flex justify-between items-center mb-3">
+                                <p className="text-sm font-semibold text-slate-700">{historialLabel}:</p>
+                                <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-7 text-xs text-slate-500 hover:text-slate-700"
+                                    onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                >
+                                    <i className={`fas fa-sort-amount-${sortOrder === 'desc' ? 'down' : 'up'} mr-1`}></i>
+                                    {sortOrder === 'desc' ? 'Más recientes primero' : 'Más antiguos primero'}
+                                </Button>
+                            </div>
+                            <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                                {[...nodo.otrasAtenciones].sort((a, b) => {
+                                    return sortOrder === 'desc' ? b.Id - a.Id : a.Id - b.Id;
+                                }).slice(0, 5).map(reg => (
+                                    <div key={reg.Id} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60 shadow-xs">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-slate-500">
+                                                <i className="far fa-clock mr-1"></i> {reg.FechaCambio}
+                                            </span>
+                                            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-200 text-slate-600">
+                                                {reg.EstadoAnterior === true ? 'Pendiente' : 'Resuelto'} &rarr; {reg.EstadoNuevo === true ? 'Pendiente' : 'Resuelto'}
+                                            </span>
+                                        </div>
+                                        {reg.ObservacionesUsuario && (
+                                            <p className="text-sm text-slate-700 mt-1"><span className="font-semibold text-slate-500">Observación:</span> {reg.ObservacionesUsuario}</p>
+                                        )}
+                                        {reg.ObservacionesServidor && (
+                                            <p className="text-xs text-slate-400 mt-1"><span className="font-medium">Sistema:</span> {reg.ObservacionesServidor}</p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
                 </div>

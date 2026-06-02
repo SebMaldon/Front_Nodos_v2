@@ -3,6 +3,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 
 export default function UnidadDetailsModal({ selectedUnidad, onClose }) {
     if (!selectedUnidad) return null;
+
+    const ENLACE_MAP = {
+        1: 'Fibra Óptica',
+        2: 'Cobre',
+        3: 'Satelital',
+        4: 'Punto a punto',
+        5: 'Otro'
+    };
     
     return (
         <Dialog open={!!selectedUnidad} onOpenChange={(open) => !open && onClose()}>
@@ -72,7 +80,7 @@ export default function UnidadDetailsModal({ selectedUnidad, onClose }) {
                             </div>
                             <div className="space-y-1">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Tipo de Enlace</p>
-                                <p className="font-bold text-slate-800">{selectedUnidad.tipo_enlace || 'No especificado'}</p>
+                                <p className="font-bold text-slate-800">{ENLACE_MAP[selectedUnidad.tipo_enlace] || selectedUnidad.tipo_enlace || 'No especificado'}</p>
                             </div>
                             <div className="space-y-1">
                                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Velocidad</p>

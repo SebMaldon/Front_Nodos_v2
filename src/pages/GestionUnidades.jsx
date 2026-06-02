@@ -11,15 +11,25 @@ import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "@/comp
 import UnidadForm from '../components/UnidadForm';
 import EditUnidadModal from '../components/EditUnidadModal';
 import UnidadDetailsModal from '../components/UnidadDetailsModal';
+import { useNotifications } from '../context/NotificationContext';
 
 const API_URL = 'http://localhost:5090';
 
 export default function GestionUnidades() {
     const { user } = useContext(AuthContext);
+    const { success, error: toastError, warn, confirm } = useNotifications();
 
-    const esAdminGlobal = !user?.id_unidad || user.id_unidad === 0;
+    const esAdminGlobal = !user?.zona;
     const esDeUnidadEspecifica = !esAdminGlobal;
     
+    const ENLACE_MAP = {
+        1: 'Fibra Óptica',
+        2: 'Cobre',
+        3: 'Satelital',
+        4: 'Punto a punto',
+        5: 'Otro'
+    };
+
     const [unidades, setUnidades] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -30,7 +40,9 @@ export default function GestionUnidades() {
 
     // Search and filters state
     const [searchTerm, setSearchTerm] = useState('');
-    const [filtroZona, setFiltroZona] = useState(' ');
+    const [filtroZona, setFiltroZona] = useState('TODAS');
+    const [filtroProveedor, setFiltroProveedor] = useState('TODOS');
+    const [filtroEnlace, setFiltroEnlace] = useState('TODOS');
     
     // Quick tabs state
     const [tabFilter, setTabFilter] = useState('Todas');
@@ -39,6 +51,7 @@ export default function GestionUnidades() {
     const [showRegisterModal, setShowRegisterModal] = useState(false);
     const [unidadToEdit, setUnidadToEdit] = useState(null);
     const [selectedUnidadDetails, setSelectedUnidadDetails] = useState(null);
+    const [selectedRowId, setSelectedRowId] = useState(null);
     
     const [editFormData, setEditFormData] = useState({});
     const [currentOldData, setCurrentOldData] = useState(null);
@@ -68,15 +81,22 @@ export default function GestionUnidades() {
     // Handle adding new unidad
     const handleAddUnidad = async (submitData) => {
         await axios.post(`${API_URL}/api/nodos/unidades`, submitData);
-        alert('Unidad registrada correctamente.');
+        success('Unidad registrada correctamente.');
         fetchUnidadesDetalle();
     };
 
     // Handle opening edit modal
     const openEditModal = (unidad, e) => {
         e.stopPropagation();
-        if (esDeUnidadEspecifica && String(unidad.id_unidad) !== String(user.id_unidad)) {
-            alert('No tienes permisos para editar esta unidad.');
+        // Un administrador de zona específica puede editar unidades de su propia zona
+        // Un administrador de unidad específica (si existe) podría limitarse a su unidad,
+        // pero aquí nos basamos en la zona si el usuario tiene una asignada.
+        const canEdit = esAdminGlobal || 
+            (user?.zona && String(unidad.zona) === String(user.zona)) ||
+            (user?.id_unidad && String(unidad.id_unidad) === String(user.id_unidad));
+
+        if (!canEdit) {
+            warn('No tienes permisos para editar esta unidad.');
             return;
         }
         
@@ -114,11 +134,11 @@ export default function GestionUnidades() {
 
     const handleSaveChanges = async () => {
         if (!editFormData.ref || !editFormData.nombre || !editFormData.tipo_unidad) {
-            alert('Por favor, completa los campos obligatorios: Referencia, Nombre y Tipo de Unidad.');
+            warn('Por favor, completa los campos obligatorios: Referencia, Nombre y Tipo de Unidad.');
             return;
         }
         if (editFormData.zona !== '' && editFormData.zona !== null && parseInt(editFormData.zona, 10) < 0) {
-            alert('La zona no puede ser un número negativo.');
+            warn('La zona no puede ser un número negativo.');
             return;
         }
 
@@ -133,12 +153,12 @@ export default function GestionUnidades() {
                     bits: editFormData.bits === '' ? null : parseInt(editFormData.bits, 10),
                 }
             });
-            alert('Unidad actualizada correctamente.');
+            success('Unidad actualizada correctamente.');
             setUnidadToEdit(null);
             fetchUnidadesDetalle();
         } catch (error) {
             console.error('Error al actualizar la unidad:', error);
-            alert(error.response?.data?.message || error.response?.data || 'Error al intentar actualizar la unidad.');
+            toastError(error.response?.data?.message || error.response?.data || 'Error al intentar actualizar la unidad.');
         } finally {
             setIsSubmitting(false);
         }
@@ -146,7 +166,7 @@ export default function GestionUnidades() {
 
     const onClickEliminar = async (unidad, e) => {
         e.stopPropagation();
-        if (!window.confirm(`¿Estás seguro que deseas eliminar la unidad ${unidad.ref} (${unidad.nombre})?`)) return;
+        if (!await confirm(`¿Estás seguro que deseas eliminar la unidad ${unidad.ref} (${unidad.nombre})?`)) return;
 
         try {
             await axios.delete(`${API_URL}/api/nodos/unidades`, {
@@ -156,11 +176,11 @@ export default function GestionUnidades() {
                     vlan: unidad.vlan
                 }
             });
-            alert('Unidad eliminada correctamente.');
+            success('Unidad eliminada correctamente.');
             fetchUnidadesDetalle();
         } catch (error) {
             console.error('Error al eliminar la unidad:', error);
-            alert('Error al intentar eliminar la unidad.');
+            toastError('Error al intentar eliminar la unidad.');
         }
     };
 
@@ -175,29 +195,43 @@ export default function GestionUnidades() {
     // Filter logic
     const filteredUnidades = unidades.filter(u => {
         const matchesSearch = normalize(u.nombre).includes(normalize(searchTerm)) || 
-                              normalize(u.ref).includes(normalize(searchTerm));
-        const matchesZona = filtroZona === ' ' || String(u.zona) === filtroZona;
+                              normalize(u.ref).includes(normalize(searchTerm)) ||
+                              normalize(u.ip).includes(normalize(searchTerm));
+        const matchesZona = filtroZona === 'TODAS' || 
+                            (filtroZona === 'SIN_ZONA' && (u.zona === null || u.zona === undefined || String(u.zona).trim() === '')) || 
+                            String(u.zona) === filtroZona;
+        const matchesProveedor = filtroProveedor === 'TODOS' || (u.proveedor && u.proveedor.toUpperCase() === filtroProveedor);
+        const matchesEnlace = filtroEnlace === 'TODOS' || (u.tipo_enlace && String(u.tipo_enlace) === filtroEnlace);
         
         let matchesTab = true;
         if (tabFilter === 'Médicas') matchesTab = normalize(u.tipo_unidad).includes('medica');
         if (tabFilter === 'Administrativas') matchesTab = normalize(u.tipo_unidad).includes('administrat');
 
-        return matchesSearch && matchesZona && matchesTab;
+        return matchesSearch && matchesZona && matchesProveedor && matchesEnlace && matchesTab;
     });
 
     // Client-side paging
     const paginatedUnidades = filteredUnidades.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
 
     const zonasDisponibles = [...new Set(unidades.map(u => u.zona).filter(z => z !== null && z !== undefined && z !== ''))].sort((a, b) => a - b);
+    const proveedoresDisponibles = [...new Set(unidades.map(u => u.proveedor ? u.proveedor.toUpperCase() : '').filter(p => p !== ''))].sort();
     
-    // Contadores para pestañas
-    const medicasCount = unidades.filter(u => normalize(u.tipo_unidad).includes('medica')).length;
-    const administrativasCount = unidades.filter(u => normalize(u.tipo_unidad).includes('administrat')).length;
+    // Contadores para pestañas optimizados
+    const { medicasCount, administrativasCount } = React.useMemo(() => {
+        let med = 0;
+        let adm = 0;
+        unidades.forEach(u => {
+            const normalized = (u.tipo_unidad || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            if (normalized.includes('medica')) med++;
+            if (normalized.includes('administrat')) adm++;
+        });
+        return { medicasCount: med, administrativasCount: adm };
+    }, [unidades]);
 
     return (
-        <div className="space-y-6 w-full animate-fade-in pb-10">
+        <div className="flex flex-col space-y-4 w-full h-full md:h-[calc(100vh-120px)] lg:h-[calc(100vh-140px)] animate-fade-in pb-2">
             {/* Header Institucional */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-xs flex-shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight text-slate-800">Gestión de Unidades</h1>
                     <p className="text-sm text-slate-500 mt-1">Crea, edita o elimina los segmentos de red y unidades de atención del sistema.</p>
@@ -221,92 +255,159 @@ export default function GestionUnidades() {
                         </Tooltip>
                     </TooltipProvider>
 
-                    {esAdminGlobal && (
-                        <Button 
-                            onClick={() => setShowRegisterModal(true)}
-                            className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
-                        >
-                            <i className="fas fa-plus"></i> Registrar Unidad
-                        </Button>
-                    )}
+                    <Button 
+                        onClick={() => setShowRegisterModal(true)}
+                        className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
+                    >
+                        <i className="fas fa-plus"></i> Registrar Unidad
+                    </Button>
                 </div>
             </div>
 
-            {/* Pestañas Rápidas de Filtrado */}
-            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-fit border border-slate-200/50">
-                <button 
-                    onClick={() => setTabFilter('Todas')} 
-                    className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-all ${tabFilter === 'Todas' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+            {/* Tarjetas de estadísticas / filtros rápidos */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between mt-2 mb-1 gap-2">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 hidden md:inline">Haz clic en las tarjetas para filtrar los resultados en la tabla.</span>
+                <span className="text-[10px] font-semibold text-slate-500 md:hidden">Toca las tarjetas para filtrar.</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-shrink-0">
+                {/* Todas las Unidades */}
+                <div 
+                    onClick={() => setTabFilter('Todas')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        tabFilter === 'Todas'
+                            ? 'bg-slate-100 border-slate-500 border-y border-r border-slate-200 shadow-sm ring-1 ring-slate-400' 
+                            : 'bg-white border-slate-500 border border-slate-200/80 hover:shadow-sm'
+                    }`}
                 >
-                    Todas las Unidades
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${tabFilter === 'Todas' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                        {unidades.length}
-                    </span>
-                </button>
-                <button 
-                    onClick={() => setTabFilter('Médicas')} 
-                    className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-all ${tabFilter === 'Médicas' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Todas las Unidades</span>
+                        <span className="text-xl font-extrabold text-slate-800 mt-0.5 block">{unidades.length}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-600 shrink-0">
+                        <i className="fas fa-building text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Médicas */}
+                <div 
+                    onClick={() => setTabFilter('Médicas')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        tabFilter === 'Médicas'
+                            ? 'bg-emerald-50 border-emerald-500 border-y border-r border-emerald-200 shadow-sm ring-1 ring-emerald-400'
+                            : 'bg-white border-emerald-500 border border-slate-200/80 hover:shadow-sm'
+                    }`}
                 >
-                    Médicas
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${tabFilter === 'Médicas' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                        {medicasCount}
-                    </span>
-                </button>
-                <button 
-                    onClick={() => setTabFilter('Administrativas')} 
-                    className={`px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 transition-all ${tabFilter === 'Administrativas' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Unidades Médicas</span>
+                        <span className="text-xl font-extrabold text-emerald-600 mt-0.5 block">{medicasCount}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 shrink-0">
+                        <i className="fas fa-clinic-medical text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Administrativas */}
+                <div 
+                    onClick={() => setTabFilter('Administrativas')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        tabFilter === 'Administrativas'
+                            ? 'bg-blue-50 border-blue-500 border-y border-r border-blue-200 shadow-sm ring-1 ring-blue-400'
+                            : 'bg-white border-blue-500 border border-slate-200/80 hover:shadow-sm'
+                    }`}
                 >
-                    Administrativas
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${tabFilter === 'Administrativas' ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                        {administrativasCount}
-                    </span>
-                </button>
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Unidades Administrativas</span>
+                        <span className="text-xl font-extrabold text-blue-600 mt-0.5 block">{administrativasCount}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
+                        <i className="fas fa-briefcase text-xs"></i>
+                    </div>
+                </div>
             </div>
 
             {/* UNIFICACIÓN DEL CONTENEDOR PRINCIPAL */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-0 w-full mb-0">
                 
-                <div className="flex flex-col md:flex-row gap-3 items-center">
-                    <div className="w-full md:flex-1 relative">
+                {/* Barra de Filtros (Header del contenedor) */}
+                <div className="p-3 border-b border-slate-200/80 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 bg-slate-50/30">
+                    <div className="flex-1 relative">
                         <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
                         <input 
                             type="text"
-                            placeholder="Buscar unidad por nombre o ref..." 
+                            placeholder="Buscar unidad por nombre, ref o IP..." 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 h-10 bg-white border border-slate-200 rounded-lg text-sm shadow-2xs focus-visible:ring-emerald-600 focus:outline-none focus:ring-2 focus:border-transparent transition-all placeholder:text-slate-400"
+                            className="w-full pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all placeholder:text-slate-400"
                         />
                     </div>
                     
-                    <div className="w-full md:w-auto min-w-[200px]">
+                    <div className="w-full md:w-auto min-w-[150px]">
                         <Select value={filtroZona} onValueChange={setFiltroZona}>
-                            <SelectTrigger className="w-full h-10 bg-white border border-slate-200 rounded-lg text-sm shadow-2xs focus-visible:ring-emerald-600">
-                                <SelectValue placeholder="Todas las zonas" />
+                            <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm h-9">
+                                <SelectValue placeholder="Todas las zonas">
+                                    {filtroZona === 'TODAS' ? 'Todas las zonas' : filtroZona === 'SIN_ZONA' ? 'Sin zona asignada' : `Zona ${filtroZona}`}
+                                </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value=" ">Todas las zonas</SelectItem>
+                                <SelectItem value="TODAS">Todas las zonas</SelectItem>
+                                <SelectItem value="SIN_ZONA">Sin zona asignada</SelectItem>
                                 {zonasDisponibles.map(z => (
                                     <SelectItem key={z} value={String(z)}>Zona {z}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
                     </div>
+
+                    <div className="w-full md:w-auto min-w-[150px]">
+                        <Select value={filtroProveedor} onValueChange={setFiltroProveedor}>
+                            <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm h-9">
+                                <SelectValue placeholder="Todos los proveedores">
+                                    {filtroProveedor === 'TODOS' ? 'Todos los proveedores' : filtroProveedor}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="TODOS">Todos los proveedores</SelectItem>
+                                {proveedoresDisponibles.map(p => (
+                                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="w-full md:w-auto min-w-[150px]">
+                        <Select value={filtroEnlace} onValueChange={setFiltroEnlace}>
+                            <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm h-9">
+                                <SelectValue placeholder="Todos los enlaces">
+                                    {filtroEnlace === 'TODOS' ? 'Todos los enlaces' : ENLACE_MAP[filtroEnlace] || filtroEnlace}
+                                </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="TODOS">Todos los enlaces</SelectItem>
+                                <SelectItem value="1">Fibra Óptica</SelectItem>
+                                <SelectItem value="2">Cobre</SelectItem>
+                                <SelectItem value="3">Satelital</SelectItem>
+                                <SelectItem value="4">Punto a punto</SelectItem>
+                                <SelectItem value="5">Otro</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="text-xs text-slate-400 font-medium">
+                        {filteredUnidades.length} registros encontrados
+                    </div>
                 </div>
 
-                <div className="text-xs text-slate-400 font-medium">
-                    {filteredUnidades.length} registros encontrados
-                </div>
-
-                <div className="border border-slate-200 rounded-xl overflow-hidden w-full">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">Ref</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">Nombre</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">Tipo</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">Proveedor</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">Enlace / Velocidad</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider text-right pr-6">Acciones</TableHead>
+                <div className="overflow-auto flex-1 w-full min-h-0">
+                    <Table className="relative">
+                        <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                            <TableRow className="border-b border-slate-200/80">
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider py-3">Ref</TableHead>
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider py-3">Nombre</TableHead>
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider py-3">Tipo</TableHead>
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider py-3">Proveedor</TableHead>
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider py-3">Enlace / Velocidad</TableHead>
+                                <TableHead className="font-semibold text-slate-700 text-xs uppercase tracking-wider text-right pr-6 py-3">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -330,36 +431,69 @@ export default function GestionUnidades() {
                                 </TableRow>
                             ) : (
                                 paginatedUnidades.map((unidad, idx) => {
-                                    const esSeleccionable = esAdminGlobal || String(unidad.id_unidad) === String(user?.id_unidad);
+                                    const esSeleccionable = esAdminGlobal || 
+                                        (user?.zona && String(unidad.zona) === String(user.zona)) ||
+                                        (user?.id_unidad && String(unidad.id_unidad) === String(user.id_unidad));
+                                    const uniqueRowId = `${unidad.ref}-${unidad.ip || 'no-ip'}`;
+                                    const tieneZona = unidad.zona !== null && unidad.zona !== undefined && String(unidad.zona).trim() !== '';
                                     
+                                    let rowBgClass = 'hover:bg-slate-50/80';
+                                    let leftBorderClass = 'border-l-4 border-transparent';
+
+                                    if (selectedRowId === uniqueRowId) {
+                                        rowBgClass = 'bg-blue-50/80 hover:bg-blue-100/60';
+                                        leftBorderClass = 'border-l-4 border-blue-500';
+                                    } else if (!tieneZona) {
+                                        rowBgClass = 'bg-red-50/40 hover:bg-red-50/60';
+                                        leftBorderClass = 'border-l-4 border-red-400';
+                                    }
+
                                     return (
                                         <TableRow 
                                             key={idx} 
-                                            onClick={() => openDetailsModal(unidad)}
-                                            className="hover:bg-slate-50/80 cursor-pointer transition-colors group"
+                                            className={`transition-colors border-b-0 group ${rowBgClass}`}
                                         >
-                                            <TableCell className="font-semibold text-slate-700">
-                                                {unidad.ref}
+                                            <TableCell className={`py-3 font-semibold text-slate-700 ${leftBorderClass}`}>
+                                                <div className="flex items-center gap-2">
+                                                    {unidad.ref}
+                                                    {!tieneZona && (
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <i className="fas fa-exclamation-triangle text-red-500 text-[10px] animate-pulse" title="Sin zona asignada"></i>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Falta asignar zona a esta unidad</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    )}
+                                                </div>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="py-3">
                                                 <div className="font-medium text-slate-800 line-clamp-2 max-w-xs" title={unidad.nombre}>
                                                     {unidad.nombre}
                                                 </div>
                                                 <div className="text-xs text-slate-400 font-mono mt-1">IP: {unidad.ip || 'N/A'}</div>
                                             </TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className={`font-normal ${unidad.tipo_unidad === 'Médica' ? 'border-emerald-200 text-emerald-700 bg-emerald-50' : 'border-blue-200 text-blue-700 bg-blue-50'}`}>
+                                            <TableCell className="py-3">
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                                                    unidad.tipo_unidad === 'Médica' 
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                                }`}>
+                                                    <i className={`fas ${unidad.tipo_unidad === 'Médica' ? 'fa-clinic-medical' : 'fa-briefcase'} mr-1.5`}></i>
                                                     {unidad.tipo_unidad}
-                                                </Badge>
+                                                </span>
                                             </TableCell>
-                                            <TableCell>
+                                            <TableCell className="py-3">
                                                 <div className="text-sm text-slate-700">{unidad.proveedor || '-'}</div>
                                             </TableCell>
-                                            <TableCell>
-                                                <div className="text-sm text-slate-700 font-medium">{unidad.tipo_enlace || '-'}</div>
+                                            <TableCell className="py-3">
+                                                <div className="text-sm text-slate-700 font-medium">{ENLACE_MAP[unidad.tipo_enlace] || unidad.tipo_enlace || '-'}</div>
                                                 <div className="text-xs text-slate-400">{unidad.velocidad || ''}</div>
                                             </TableCell>
-                                            <TableCell className="text-right pr-6">
+                                            <TableCell className="text-right pr-6 py-3">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     <TooltipProvider>
                                                         <Tooltip>
@@ -368,7 +502,7 @@ export default function GestionUnidades() {
                                                                     variant="ghost" 
                                                                     size="icon" 
                                                                     className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                                                                    onClick={(e) => { e.stopPropagation(); openDetailsModal(unidad); }}
+                                                                    onClick={(e) => { e.stopPropagation(); setSelectedRowId(uniqueRowId); openDetailsModal(unidad); }}
                                                                 >
                                                                     <i className="fas fa-eye text-sm"></i>
                                                                 </Button>
@@ -385,7 +519,7 @@ export default function GestionUnidades() {
                                                                         variant="ghost" 
                                                                         size="icon" 
                                                                         className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
-                                                                        onClick={(e) => openEditModal(unidad, e)}
+                                                                        onClick={(e) => { e.stopPropagation(); setSelectedRowId(uniqueRowId); openEditModal(unidad, e); }}
                                                                     >
                                                                         <i className="fas fa-edit text-sm"></i>
                                                                     </Button>
@@ -403,7 +537,7 @@ export default function GestionUnidades() {
                                                                         variant="ghost" 
                                                                         size="icon" 
                                                                         className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                                                        onClick={(e) => onClickEliminar(unidad, e)}
+                                                                        onClick={(e) => { e.stopPropagation(); setSelectedRowId(uniqueRowId); onClickEliminar(unidad, e); }}
                                                                     >
                                                                         <i className="fas fa-trash text-sm"></i>
                                                                     </Button>
@@ -424,7 +558,7 @@ export default function GestionUnidades() {
 
                 {/* Paginación client-side */}
                 {filteredUnidades.length > 0 && (
-                    <div className="flex items-center justify-between pt-2">
+                    <div className="flex items-center justify-between p-3 border-t border-slate-200/80 bg-slate-50/50">
                         <div className="flex items-center gap-2 text-sm text-slate-500">
                             <span>Registros por página:</span>
                             <select
@@ -475,6 +609,8 @@ export default function GestionUnidades() {
                 <UnidadForm 
                     onClose={() => setShowRegisterModal(false)} 
                     onAddUnidad={handleAddUnidad} 
+                    esAdminGlobal={esAdminGlobal}
+                    userZona={user?.zona}
                 />
             )}
 
@@ -486,6 +622,7 @@ export default function GestionUnidades() {
                     handleSaveChanges={handleSaveChanges}
                     handleCloseModal={() => setUnidadToEdit(null)}
                     isSubmitting={isSubmitting}
+                    esAdminGlobal={esAdminGlobal}
                 />
             )}
 

@@ -4,8 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-export default function EditUnidadModal({ unidadToEdit, editFormData, handleEditFormChange, handleSaveChanges, handleCloseModal, isSubmitting }) {
+export default function EditUnidadModal({ unidadToEdit, editFormData, handleEditFormChange, handleSaveChanges, handleCloseModal, isSubmitting, esAdminGlobal = true }) {
     if (!unidadToEdit) return null;
+
+    const ENLACE_MAP = {
+        1: 'Fibra Óptica',
+        2: 'Cobre',
+        3: 'Satelital',
+        4: 'Punto a punto',
+        5: 'Otro'
+    };
 
     return (
         <Dialog open={!!unidadToEdit} onOpenChange={(open) => !open && handleCloseModal()}>
@@ -70,7 +78,8 @@ export default function EditUnidadModal({ unidadToEdit, editFormData, handleEdit
                                     onChange={handleEditFormChange}
                                     placeholder="Ej: 1"
                                     min="0"
-                                    className="bg-white border-slate-200"
+                                    className={`bg-white border-slate-200 ${!esAdminGlobal ? 'opacity-70 cursor-not-allowed bg-slate-50' : ''}`}
+                                    disabled={!esAdminGlobal}
                                 />
                             </div>
                         </div>
@@ -145,13 +154,24 @@ export default function EditUnidadModal({ unidadToEdit, editFormData, handleEdit
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-slate-600 font-medium">Tipo de Enlace</Label>
-                                <Input
-                                    name="tipo_enlace"
-                                    value={editFormData.tipo_enlace || ''}
-                                    onChange={handleEditFormChange}
-                                    placeholder="Ej: Fibra Óptica"
-                                    className="bg-white border-slate-200"
-                                />
+                                <Select
+                                    value={editFormData.tipo_enlace ? String(editFormData.tipo_enlace) : ''}
+                                    onValueChange={(value) => handleEditFormChange({ target: { name: 'tipo_enlace', value: value === 'Ninguno' ? '' : parseInt(value, 10) } })}
+                                >
+                                    <SelectTrigger className="w-full bg-white border border-slate-200">
+                                        <SelectValue placeholder="Seleccione tipo">
+                                            {editFormData.tipo_enlace ? ENLACE_MAP[editFormData.tipo_enlace] || editFormData.tipo_enlace : 'Seleccione tipo'}
+                                        </SelectValue>
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Ninguno">Ninguno</SelectItem>
+                                        <SelectItem value="1">Fibra Óptica</SelectItem>
+                                        <SelectItem value="2">Cobre</SelectItem>
+                                        <SelectItem value="3">Satelital</SelectItem>
+                                        <SelectItem value="4">Punto a punto</SelectItem>
+                                        <SelectItem value="5">Otro</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-slate-600 font-medium">Velocidad</Label>

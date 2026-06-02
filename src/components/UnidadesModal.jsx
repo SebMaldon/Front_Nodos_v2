@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +13,7 @@ const API_URL = 'http://localhost:5090';
 
 export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
     const { user } = useContext(AuthContext);
+    const { success, error: toastError, warn, confirm } = useNotifications();
 
     const esAdminGlobal = !user?.id_unidad || user.id_unidad === 0;
     const esDeUnidadEspecifica = !esAdminGlobal;
@@ -119,7 +121,7 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
 
     const onClickEliminar = async () => {
         if (!selectedUnidad) return;
-        if (!window.confirm(`¿Estás seguro que deseas eliminar el segmento ${selectedUnidad.ref} (${selectedUnidad.ip} - VLAN: ${selectedUnidad.vlan})?`)) return;
+        if (!await confirm(`¿Estás seguro que deseas eliminar el segmento ${selectedUnidad.ref} (${selectedUnidad.ip} - VLAN: ${selectedUnidad.vlan})?`)) return;
 
         try {
             await axios.delete(`${API_URL}/api/nodos/unidades`, {
@@ -129,13 +131,13 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
                     vlan: selectedUnidad.vlan
                 }
             });
-            alert('Unidad eliminada correctamente.');
+            success('Unidad eliminada correctamente.');
             fetchUnidadesDetalle();
             if (onUnidadesChange) onUnidadesChange();
             resetForm();
         } catch (error) {
             console.error('Error al eliminar la unidad:', error);
-            alert('Error al intentar eliminar la unidad.');
+            toastError('Error al intentar eliminar la unidad.');
         }
     };
 
@@ -143,12 +145,12 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
         e.preventDefault();
 
         if (!formData.ref || !formData.nombre || !formData.ip || !formData.vlan) {
-            alert('Por favor, completa todos los campos requeridos.');
+            warn('Por favor, completa todos los campos requeridos.');
             return;
         }
 
         if (formData.zona !== '' && formData.zona !== null && parseInt(formData.zona, 10) < 0) {
-            alert('La zona no puede ser un número negativo.');
+            warn('La zona no puede ser un número negativo.');
             return;
         }
 
@@ -162,7 +164,7 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
                         zona: formData.zona === '' || formData.zona === null ? null : parseInt(formData.zona, 10)
                     }
                 });
-                alert('Unidad actualizada correctamente.');
+                success('Unidad actualizada correctamente.');
             } else {
                 await axios.post(`${API_URL}/api/nodos/unidades`, {
                     ref: formData.ref,
@@ -172,7 +174,7 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
                     vlan: parseInt(formData.vlan, 10),
                     zona: formData.zona === '' || formData.zona === null ? null : parseInt(formData.zona, 10)
                 });
-                alert('Unidad registrada correctamente.');
+                success('Unidad registrada correctamente.');
             }
 
             resetForm();
@@ -180,7 +182,7 @@ export default function UnidadesModal({ open, onClose, onUnidadesChange }) {
             if (onUnidadesChange) onUnidadesChange();
         } catch (error) {
             console.error('Error al guardar la unidad:', error);
-            alert(error.response?.data?.message || 'Error al intentar guardar la unidad. Verifica los datos e intenta nuevamente.');
+            toastError(error.response?.data?.message || 'Error al intentar guardar la unidad. Verifica los datos e intenta nuevamente.');
         }
     };
 

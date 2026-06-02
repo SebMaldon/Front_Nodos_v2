@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 export default function ObservationModal({ isOpen, title, observacionesUsuario, setObservacionesUsuario, onFileChange, onCancel, onConfirm, placeholder = "Ingrese los motivos..." }) {
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md bg-white p-6 rounded-xl border border-slate-200 shadow-xl">
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
                 </DialogHeader>

@@ -11,6 +11,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import GestionUnidades from './pages/GestionUnidades';
 
 import { AppProvider, useApp } from './context/AppContext';
+import { NotificationProvider } from './context/NotificationContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 
@@ -62,67 +63,69 @@ function App() {
         <Router>
             <AuthProvider>
                 <AppProvider>
-                    <Routes>
-                        <Route path="/login" element={<Login />} />
-                        <Route
-                            path="/gestion-nodos"
-                            element={
-                                <ProtectedRoute requiredRole="administrador">
-                                    <AppLayout>
-                                         <div className="w-full fade-in">
-                                             <NodeTable refreshKey={refreshKey} />
-                                         </div>
-                                    </AppLayout>
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/gestion-unidades"
-                            element={
-                                <ProtectedRoute requiredRole="administrador">
-                                    <AppLayout>
-                                         <div className="w-full fade-in">
-                                             <GestionUnidades />
-                                         </div>
-                                     </AppLayout>
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/catalogo-prioritarios"
-                            element={
-                                <ProtectedRoute>
-                                    <AppLayout>
-                                        <div className="w-full fade-in">
-                                            <NodosSustitucion />
-                                        </div>
-                                    </AppLayout>
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/catalogo-nodos"
-                            element={
-                                <ProtectedRoute>
-                                    <AppLayout>
-                                        <div className="w-full fade-in">
-                                            <TablaRegistros />
-                                        </div>
-                                    </AppLayout>
-                                </ProtectedRoute>
-                            }
-                        />
-                        <Route
-                            path="/"
-                            element={
-                                <ProtectedRoute>
-                                    <AppLayout>
-                                        <PantallaInicio />
-                                    </AppLayout>
-                                </ProtectedRoute>
-                            }
-                        />
-                    </Routes>
+                    <NotificationProvider>
+                        <Routes>
+                            <Route path="/login" element={<Login />} />
+                            <Route
+                                path="/gestion-nodos"
+                                element={
+                                    <ProtectedRoute requiredRole="administrador">
+                                        <AppLayout>
+                                             <div className="w-full fade-in">
+                                                 <NodeTable refreshKey={refreshKey} />
+                                             </div>
+                                        </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/gestion-unidades"
+                                element={
+                                    <ProtectedRoute requiredRole="administrador">
+                                        <AppLayout>
+                                             <div className="w-full fade-in">
+                                                 <GestionUnidades />
+                                             </div>
+                                         </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/catalogo-prioritarios"
+                                element={
+                                    <ProtectedRoute>
+                                        <AppLayout>
+                                            <div className="w-full fade-in">
+                                                <NodosSustitucion />
+                                            </div>
+                                        </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/catalogo-nodos"
+                                element={
+                                    <ProtectedRoute>
+                                        <AppLayout>
+                                            <div className="w-full fade-in">
+                                                <TablaRegistros />
+                                            </div>
+                                        </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/"
+                                element={
+                                    <ProtectedRoute>
+                                        <AppLayout>
+                                            <PantallaInicio />
+                                        </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                        </Routes>
+                    </NotificationProvider>
                 </AppProvider>
             </AuthProvider>
         </Router>

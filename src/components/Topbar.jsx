@@ -16,7 +16,7 @@ export default function Topbar() {
   const rolConf = ROL_CONFIG[role] ?? ROL_CONFIG.user;
   const RoleIcon = rolConf.icon;
 
-  const displayName = user?.username || 'Usuario';
+  const displayName = user?.usuario || 'Perfil';
   const initials = displayName.slice(0, 2).toUpperCase();
 
   return (

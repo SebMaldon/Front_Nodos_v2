@@ -1,7 +1,8 @@
-import { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, useMemo } from 'react';
 // MUI imports removed
 import axios from 'axios';
 import { AuthContext } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 
 const API_URL = 'http://localhost:5090';
 
@@ -25,6 +26,7 @@ import ObservationModal from './ObservationModal';
 
 const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
     const { user } = useContext(AuthContext); // Obtenemos el usuario activo
+    const { success, error: toastError, warn, confirm } = useNotifications();
     const [pageNode, setPageNode] = useState(0);
     const [rowsPerPageNode, setRowsPerPageNode] = useState(10);
     const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -48,6 +50,14 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
     const [totalRegistros, setTotalRegistros] = useState(0); // Estado para el total de registros
     const [totalFaltantes, setTotalFaltantes] = useState(0); // Estado para el total de nodos faltantes
     const [totalAtendidos, setTotalAtendidos] = useState(0); // Estado para el total de nodos atendidos
+    const [totalOtraAtencion, setTotalOtraAtencion] = useState(0);
+    const [totalOtroAtendido, setTotalOtroAtendido] = useState(0);
+    const [totalAtencion, setTotalAtencion] = useState(0);
+    const [totalSinImagenes, setTotalSinImagenes] = useState(0);
+
+    const [activeCardFilters, setActiveCardFilters] = useState([]);
+    const [isStrictFilterMode, setIsStrictFilterMode] = useState(true);
+
     const [filtros, setFiltros] = useState({ // Estado para los filtros
         atencion: '',
         unidad: '',
@@ -100,11 +110,6 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         fetchNewNodos();
     }, [filtros]);
 
-    // Re-fetch cuando cambiamos la pagina o el limite
-    useEffect(() => {
-        fetchNewNodos();
-    }, [pageNode, rowsPerPageNode]);
-
     // Re-fetch cuando se agrega un nodo nuevo desde el formulario (refreshKey viene de App.jsx)
     useEffect(() => {
         if (refreshKey > 0) {
@@ -124,54 +129,46 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         try {
             const params = { ...filtros }; // Copiar los filtros actuales
 
-            // Modificar los filtros según el valor de "tipoAtencion"
-            switch (filtros.tipoAtencion) {
-                case 'mantenimiento':
-                    params.atencion = 1; // Requiere mantenimiento
-                    params.otraatencion = ''; // Ignorar otro tipo de atención
-                    break;
-                case 'otraAtencion':
-                    params.atencion = ''; // Ignorar mantenimiento
-                    params.otraatencion = 1; // Requiere otro tipo de atención
-                    break;
-                case 'ambos':
-                    params.atencion = 1; // Requiere mantenimiento
-                    params.otraatencion = 1; // Requiere otro tipo de atención
-                    break;
-                case 'ninguno':
-                    params.atencion = 0; // No requiere mantenimiento
-                    params.otraatencion = 0; // No requiere otro tipo de atención
-                    params.atendido = 0;
-                    break;
-                case 'uno':
-                    params.atendido = 1;
-                    break;
-                case 'cero':
-                    params.atendido = 0;
-                    break;
-                default:
-                    params.atencion = ''; // Sin filtro de atención
-                    params.otraatencion = ''; // Sin filtro de otro tipo de atención
-                    break;
-            }
-
-            // Eliminar el campo "tipoAtencion" para no enviarlo a la API
+            // Eliminar el campo "tipoAtencion" antiguo si existe
             delete params.tipoAtencion;
 
-            // Hacer la solicitud a la API con los filtros modificados y paginación
+            // Añadir los filtros de las tarjetas
+            // NO LOS ENVIAMOS AL BACKEND, LO MANEJAMOS EN EL FRONT PARA PERMITIR "O" (CUALQUIERA)
+
+            // Hacer la solicitud a la API con límite alto para manejar la paginación y filtros de tarjeta en el frontend
             const response = await axios.get(`${API_URL}/api/nodos`, {
-                params: { ...params, page: pageNode + 1, limit: rowsPerPageNode },
+                params: { ...params, page: 1, limit: 5000 },
             });
 
-            setFilteredNodos(response.data.nodos); // Almacenar los datos filtrados en el estado
-            setTotalRegistros(response.data.total); // Almacenar el total de registros en el estado
-            setTotalFaltantes(response.data.faltantes); // Almacenar el total de nodos faltantes en el estado
-            setTotalAtendidos(response.data.totalAtendido);// Almacenar el total de nodos atendidos en el estado
+            setFilteredNodos(response.data.nodos || []); 
+            setTotalRegistros(response.data.total || 0); 
+            setTotalFaltantes(response.data.faltantes || 0); 
+            setTotalAtendidos(response.data.totalAtendido || 0);
+            setTotalOtraAtencion(response.data.totalOtraAtencion || 0);
+            setTotalOtroAtendido(response.data.totalOtroAtendido || 0);
+            setTotalAtencion(response.data.totalAtencion || 0);
+            
+            const nodosRec = response.data.nodos || [];
+            const manualSinImg = nodosRec.filter(n => !n.TieneImagenes).length;
+            setTotalSinImagenes(response.data.totalSinImagenes !== undefined ? response.data.totalSinImagenes : manualSinImg);
         } catch (error) {
             console.error('Error al obtener los nuevos nodos:', error);
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const toggleCardFilter = (filterName) => {
+        setActiveCardFilters(prev => 
+            prev.includes(filterName) 
+                ? prev.filter(f => f !== filterName) 
+                : [...prev, filterName]
+        );
+        setPageNode(0); // Reiniciar paginación al cambiar filtros de tarjeta
+    };
+
+    const clearCardFilters = () => {
+        setActiveCardFilters([]);
     };
     const fetchUOtrosNodos = async () => {
         try {
@@ -212,22 +209,25 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
     // Función para abrir el modal con los detalles del nodo
     const handleDetailsClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         try {
             const response = await axios.get(`${API_URL}/api/nodos/${nodoData.Id}`); // Llama a la API para obtener los detalles completos del nodo
             setSelectedNodo(response.data); // Guarda los detalles completos en el estado
         } catch (error) {
             console.error('Error al obtener los detalles del nodo:', error);
-            alert('Error al obtener los detalles del nodo');
+            toastError('Error al obtener los detalles del nodo');
         }
     };
 
     // Función para abrir el modal de confirmación de eliminación
     const handleDeleteClick = (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         setNodoToDelete(nodoData); // Guarda el nodo a eliminar en el estado
     };
 
     // Función para abrir el modal de confirmación para quitar la atención
     const handleAtencionClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         if (nodoData.Atencion == true) { // Si el nodo requiere atención
             try {
                 // Obtener las imágenes solventadas desde el backend
@@ -255,6 +255,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
     // Función para abrir el modal de confirmación para quitar otras atenciones
     const handleOtherAtencionClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         if (nodoData.OtraAtencion == true) { // Si el nodo requiere atención
             try {
                 // Obtener las imágenes solventadas desde el backend
@@ -388,13 +389,13 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 }
             );
 
-            alert('Cambios guardados correctamente');
+            success('Cambios guardados correctamente');
             handleCloseModal(); // Cerrar el modal
             fetchNewNodos(); // Actualizar la lista filtrada y refrescar las banderas
             setNewImageFiles([]); // Limpiar el estado de las nuevas imágenes
         } catch (error) {
             console.error('Error al guardar los cambios:', error);
-            alert('Error al guardar los cambios');
+            toastError('Error al guardar los cambios');
         }
     };
 
@@ -449,13 +450,13 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 }
             );
 
-            alert('Cambios guardados correctamente');
+            success('Cambios guardados correctamente');
             handleCloseModal(); // Cerrar el modal
             fetchNewNodos(); // Actualizar la lista filtrada y refrescar las banderas
             setNewImageFiles([]); // Limpiar el estado de las nuevas imágenes
         } catch (error) {
             console.error('Error al guardar los cambios:', error);
-            alert('Error al guardar los cambios');
+            toastError('Error al guardar los cambios');
         }
     };
 
@@ -488,7 +489,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
         try {
             await axios.delete(`${API_URL}/api/nodos/${nodoToDelete.Id}`); // URL de la API para eliminar el nodo
             fetchNewNodos(); // Actualizar la lista de nodos
-            alert('Nodo eliminado exitosamente');
+            success('Nodo eliminado exitosamente');
             handleCloseModal(); // Cerrar el modal
             fetchNewNodos(); // Actualizar los registros de la tabla
         } catch (error) {
@@ -503,6 +504,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
     // Función para abrir el modal de edición
     const handleEditClick = async (nodoData) => {
+        setSelectedRowId(nodoData.Id);
         try {
             const response = await axios.get(`${API_URL}/api/nodos/${nodoData.Id}`); // Obtener los detalles completos del nodo
             setNodoToEdit(nodoData); // Guardar el nodo a editar en el estado
@@ -513,14 +515,14 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
             });
         } catch (error) {
             console.error('Error al obtener los detalles del nodo:', error);
-            alert('Error al obtener los detalles del nodo');
+            toastError('Error al obtener los detalles del nodo');
         }
     };
 
 
     // Función para eliminar una imagen de la base de datos
     const handleDeleteImage = async (imageId) => {
-        if (!window.confirm('¿Estás seguro de que deseas eliminar esta imagen?')) return;
+        if (!await confirm('¿Estás seguro de que deseas eliminar esta imagen?')) return;
 
         try {
             await axios.delete(`${API_URL}/api/nodos/images/${imageId}`);
@@ -541,7 +543,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
             });
 
             // Mostrar feedback al usuario
-            alert('Imagen eliminada con éxito');
+            success('Imagen eliminada con éxito');
 
             // No cerrar el modal automáticamente para permitir más acciones
             handleCloseModal();
@@ -551,21 +553,52 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
 
         } catch (error) {
             console.error('Error al eliminar la imagen:', error);
-            alert('Hubo un error al eliminar la imagen');
+            toastError('Hubo un error al eliminar la imagen');
         }
     };
 
-    const datosAMostrar = Array.isArray(filteredNodos) ? filteredNodos.filter(n => {
-        if (!searchTerm) return true;
-        const term = searchTerm.toLowerCase();
-        return (
-            (n.Ubicacion && n.Ubicacion.toLowerCase().includes(term)) ||
-            (n.Unidad && n.Unidad.toLowerCase().includes(term)) ||
-            (n.Puerto && String(n.Puerto).toLowerCase().includes(term)) ||
-            (n.IpSwitch && n.IpSwitch.toLowerCase().includes(term)) ||
-            (n.Observaciones && n.Observaciones.toLowerCase().includes(term))
-        );
-    }) : [];
+    const datosAMostrar = useMemo(() => {
+        let result = Array.isArray(filteredNodos) ? filteredNodos : [];
+
+        // Apply Card Filters
+        if (activeCardFilters.length > 0) {
+            result = result.filter(nodo => {
+                const conditions = {
+                    reqMantenimiento: nodo.Atencion === 1 || nodo.Atencion === true,
+                    reqOtraAtencion: nodo.OtraAtencion === 1 || nodo.OtraAtencion === true,
+                    mantResuelto: nodo.Atendido === 1 || nodo.Atendido === true,
+                    otraAtResuelta: nodo.OtroAtendido === 1 || nodo.OtroAtendido === true,
+                    totalFaltantes: parseInt(nodo.Nodos_faltantes) > 0,
+                    sinImagenes: !nodo.TieneImagenes
+                };
+
+                const activeConditions = activeCardFilters.map(f => conditions[f]);
+
+                if (isStrictFilterMode) {
+                    // AND logic: all active filters must be true
+                    return activeConditions.every(cond => cond === true);
+                } else {
+                    // OR logic: at least one active filter must be true
+                    return activeConditions.some(cond => cond === true);
+                }
+            });
+        }
+
+        // Apply Search Term
+        if (searchTerm.trim()) {
+            const term = searchTerm.toLowerCase();
+            result = result.filter(n => 
+                (n.Ubicacion && n.Ubicacion.toLowerCase().includes(term)) ||
+                (n.Unidad && n.Unidad.toLowerCase().includes(term)) ||
+                (n.Puerto && String(n.Puerto).toLowerCase().includes(term)) ||
+                (n.IpSwitch && n.IpSwitch.toLowerCase().includes(term)) ||
+                (n.Observaciones && n.Observaciones.toLowerCase().includes(term)) ||
+                (n.Area && n.Area.toLowerCase().includes(term))
+            );
+        }
+
+        return result;
+    }, [filteredNodos, activeCardFilters, isStrictFilterMode, searchTerm]);
 
     // Eliminado filtrosEstanVacios duplicado
 
@@ -603,7 +636,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
             setShowMaterialesModal(true); // Mostrar el modal de materiales
         } catch (error) {
             console.error('Error al obtener materiales:', error);
-            alert('Error al cargar materiales');
+            toastError('Error al cargar materiales');
         }
     };
 
@@ -655,7 +688,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 }));
 
             if (materialesAEnviar.length === 0) { // Si no hay cambios, mostrar alerta
-                alert('No hay cambios para guardar');
+                warn('No hay cambios para guardar');
                 return;
             }
 
@@ -665,13 +698,13 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 { materiales: materialesAEnviar }
             );
             if (response.data.success) {
-                alert('Materiales actualizados correctamente');
+                success('Materiales actualizados correctamente');
                 setShowMaterialesModal(false); // Cerrar la modal de materiales
                 setMaterialesEditados([]); // Limpiar la lista de editados
             }
         } catch (error) {
             console.error('Error al guardar materiales:', error);
-            alert('Error al guardar materiales');
+            toastError('Error al guardar materiales');
         }
     };
 
@@ -688,14 +721,17 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
     };
 
     return (
-        <div className="space-y-6 w-full">
-            {/* Header / Título estilo Screenshot */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+        <div className="flex flex-col space-y-3 md:h-[calc(100vh-120px)] lg:h-[calc(100vh-140px)]">
+            {/* Header del catálogo */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Gestión y Registro de Nodos</h1>
-                    <p className="text-sm text-slate-500 mt-1">Padrón de nodos y enlaces institucionales — Delegación Nayarit</p>
+                    <h1 className="text-xl font-bold tracking-tight text-slate-800">Gestión de Nodos</h1>
+                    <p className="text-xs text-slate-500 mt-0.5">Administración y registro de nodos y enlaces institucionales</p>
                 </div>
-                <div className="flex items-center gap-3">
+                
+                {/* Botones de acción alineados en el header */}
+                <div className="flex flex-wrap items-center gap-2.5 w-full lg:w-auto justify-start lg:justify-end">
+                    {/* Botón de Refrescar siempre visible */}
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger asChild>
@@ -707,7 +743,9 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                                     <i className="fas fa-sync-alt"></i>
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent>Refrescar datos</TooltipContent>
+                            <TooltipContent>
+                                <p>Refrescar datos</p>
+                            </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
 
@@ -722,104 +760,181 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 </div>
             </div>
 
-            {/* Pestañas de estatus rápidas */}
-            <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl w-fit border border-slate-200/50">
-                <button
-                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: '' } })}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
-                        !filtros.tipoAtencion
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                            : 'text-slate-500 hover:text-slate-800'
+            {/* Tarjetas de estadísticas */}
+            <div className="flex flex-col md:flex-row md:items-center justify-between mt-2 mb-1 gap-2">
+                <span className="text-[10px] sm:text-xs font-semibold text-slate-500 hidden md:inline">Haz clic en las tarjetas para filtrar los resultados en la tabla.</span>
+                <span className="text-[10px] font-semibold text-slate-500 md:hidden">Toca las tarjetas para filtrar.</span>
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                    <span className="text-[10px] sm:text-xs font-semibold text-slate-500">Combinar Filtros:</span>
+                    <button 
+                        onClick={() => setIsStrictFilterMode(true)}
+                        className={`text-[10px] sm:text-xs px-2 sm:px-2.5 py-1 rounded-full border transition-colors ${isStrictFilterMode ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500'}`}
+                    >
+                        Estricto (Y)
+                    </button>
+                    <button 
+                        onClick={() => setIsStrictFilterMode(false)}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${!isStrictFilterMode ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' : 'bg-white border-slate-200 text-slate-500'}`}
+                    >
+                        Cualquiera (O)
+                    </button>
+                </div>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2">
+                {/* Total Registros */}
+                <div 
+                    onClick={clearCardFilters}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.length === 0 
+                            ? 'bg-emerald-50 border-emerald-500 border-y border-r border-emerald-200 shadow-sm ring-1 ring-emerald-400' 
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
                     }`}
                 >
-                    Todos los Nodos 
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                        !filtros.tipoAtencion ? 'bg-emerald-800 text-white' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                        {totalRegistros}
-                    </span>
-                </button>
-                <button
-                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: 'mantenimiento' } })}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
-                        filtros.tipoAtencion === 'mantenimiento'
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                            : 'text-slate-500 hover:text-slate-800'
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Total Nodos</span>
+                        <span className="text-xl font-extrabold text-slate-800 mt-0.5 block">{totalRegistros}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-emerald-50 rounded-lg flex items-center justify-center text-emerald-600 shrink-0">
+                        <i className="fas fa-database text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Req. Mantenimiento */}
+                <div 
+                    onClick={() => toggleCardFilter('reqMantenimiento')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('reqMantenimiento')
+                            ? 'bg-red-50 border-red-500 border-y border-r border-red-200 shadow-sm ring-1 ring-red-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
                     }`}
                 >
-                    Requieren Mantenimiento
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                        filtros.tipoAtencion === 'mantenimiento' ? 'bg-red-600 text-white' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                        {totalFaltantes}
-                    </span>
-                </button>
-                <button
-                    onClick={() => handleFiltroChange({ target: { name: 'tipoAtencion', value: 'uno' } })}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${
-                        filtros.tipoAtencion === 'uno'
-                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/50'
-                            : 'text-slate-500 hover:text-slate-800'
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Req. Mantenimiento</span>
+                        <span className="text-xl font-extrabold text-red-600 mt-0.5 block">{totalAtencion}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 shrink-0">
+                        <i className="fas fa-tools text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Req. Otra Atención */}
+                <div 
+                    onClick={() => toggleCardFilter('reqOtraAtencion')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('reqOtraAtencion')
+                            ? 'bg-amber-50 border-amber-500 border-y border-r border-amber-200 shadow-sm ring-1 ring-amber-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
                     }`}
                 >
-                    Mantenimiento Resuelto
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${
-                        filtros.tipoAtencion === 'uno' ? 'bg-emerald-700 text-white' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                        {totalAtendidos}
-                    </span>
-                </button>
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Req. Otra Atención</span>
+                        <span className="text-xl font-extrabold text-amber-600 mt-0.5 block">{totalOtraAtencion}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-amber-50 rounded-lg flex items-center justify-center text-amber-500 shrink-0">
+                        <i className="fas fa-exclamation-triangle text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Mantenimiento Resuelto */}
+                <div 
+                    onClick={() => toggleCardFilter('mantResuelto')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('mantResuelto')
+                            ? 'bg-green-50 border-green-600 border-y border-r border-green-200 shadow-sm ring-1 ring-green-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
+                    }`}
+                >
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Mant. Resuelto</span>
+                        <span className="text-xl font-extrabold text-green-600 mt-0.5 block">{totalAtendidos}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-green-50 rounded-lg flex items-center justify-center text-green-600 shrink-0">
+                        <i className="fas fa-check-circle text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Otra At. Resuelta */}
+                <div 
+                    onClick={() => toggleCardFilter('otraAtResuelta')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('otraAtResuelta')
+                            ? 'bg-teal-50 border-teal-500 border-y border-r border-teal-200 shadow-sm ring-1 ring-teal-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
+                    }`}
+                >
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Otra At. Resuelta</span>
+                        <span className="text-xl font-extrabold text-teal-600 mt-0.5 block">{totalOtroAtendido}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-teal-50 rounded-lg flex items-center justify-center text-teal-600 shrink-0">
+                        <i className="fas fa-tasks text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Total Faltantes */}
+                <div 
+                    onClick={() => toggleCardFilter('totalFaltantes')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('totalFaltantes')
+                            ? 'bg-slate-100 border-slate-400 border-y border-r border-slate-300 shadow-sm ring-1 ring-slate-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
+                    }`}
+                >
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Total Faltantes</span>
+                        <span className="text-xl font-extrabold text-slate-600 mt-0.5 block">{totalFaltantes}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 shrink-0">
+                        <i className="fas fa-folder-minus text-xs"></i>
+                    </div>
+                </div>
+
+                {/* Sin Imágenes */}
+                <div 
+                    onClick={() => toggleCardFilter('sinImagenes')}
+                    className={`cursor-pointer rounded-xl border-l-4 p-3 shadow-xs flex items-center justify-between transition-all duration-200 ${
+                        activeCardFilters.includes('sinImagenes')
+                            ? 'bg-blue-50 border-blue-600 border-y border-r border-blue-200 shadow-sm ring-1 ring-blue-400'
+                            : 'bg-white border-slate-200/80 hover:shadow-sm'
+                    }`}
+                >
+                    <div>
+                        <span className="block text-[9px] uppercase font-bold tracking-wider text-slate-400">Sin Imágenes</span>
+                        <span className="text-xl font-extrabold text-blue-600 mt-0.5 block">{totalSinImagenes}</span>
+                    </div>
+                    <div className="h-8 w-8 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 shrink-0">
+                        <i className="fas fa-wifi text-xs"></i>
+                    </div>
+                </div>
+
             </div>
 
-            {/* Contenedor Principal (Tarjeta estilo Screenshot) */}
-            <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs space-y-4">
-                {/* Buscador y Filtros */}
-                <div className="flex flex-col md:flex-row gap-3 items-center">
-                    <div className="relative w-full md:flex-1">
-                        <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                        <Input
+            {/* Contenedor principal de datos (Filtros + Tabla + Paginación) */}
+            <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[500px] md:min-h-0 w-full mb-0">
+                
+                {/* Barra de Filtros (Header del contenedor) */}
+                <div className="p-3 border-b border-slate-200/80 flex flex-col md:flex-row md:flex-wrap md:items-center gap-3 bg-slate-50/30">
+                    {/* Búsqueda cliente-side */}
+                    <div className="flex-1 relative">
+                        <i className="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input
                             type="text"
-                            placeholder="Buscar por ubicación, ip switch, puerto o resguardo..."
+                            placeholder="Buscar por ubicación, IP de switch, puerto o área..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
-                            className="pl-9 h-10 w-full bg-white border border-slate-200 rounded-lg shadow-2xs text-sm focus-visible:ring-emerald-600"
+                            className="w-full pl-9 pr-4 py-1.5 border border-slate-200 rounded-lg text-sm bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all placeholder:text-slate-400"
                         />
                     </div>
-                    
-                    <div className="flex flex-wrap gap-2 w-full md:w-auto items-center">
+                    {/* Filtro de Unidad */}
+                    <div className="w-full md:w-auto min-w-[220px]">
                         <Select 
-                            value={filtros.tipoAtencion || "all"} 
-                            onValueChange={(val) => handleFiltroChange({target: {name: 'tipoAtencion', value: val === 'all' ? '' : val}})}
+                            value={filtros.unidad || " "} 
+                            onValueChange={(val) => handleFiltroChange({target: {name: 'unidad', value: val.trim()}})}
                         >
-                            <SelectTrigger className="w-full sm:w-[180px] h-10 bg-white border border-slate-200 text-sm">
-                                <SelectValue placeholder="Todos los estatus">
-                                    {filtros.tipoAtencion ? (
-                                        filtros.tipoAtencion === 'uno' ? 'Mantenimiento Resuelto' :
-                                        filtros.tipoAtencion === 'mantenimiento' ? 'Requieren Mantenimiento' :
-                                        filtros.tipoAtencion === 'otraAtencion' ? 'Requieren Otra Atención' :
-                                        filtros.tipoAtencion === 'ambos' ? 'Ambos tipos' :
-                                        filtros.tipoAtencion === 'ninguno' ? 'Sin ningún reporte' :
-                                        'Todos los estatus'
-                                    ) : 'Todos los estatus'}
-                                </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">Todos los estatus</SelectItem>
-                                <SelectItem value="uno">Mantenimiento Resuelto</SelectItem>
-                                <SelectItem value="mantenimiento">Requieren Mantenimiento</SelectItem>
-                                <SelectItem value="otraAtencion">Requieren Otra Atención</SelectItem>
-                                <SelectItem value="ambos">Ambos tipos</SelectItem>
-                                <SelectItem value="ninguno">Sin ningún reporte</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select 
-                            value={filtros.unidad || "all"} 
-                            onValueChange={(val) => handleFiltroChange({target: {name: 'unidad', value: val === 'all' ? '' : val}})}
-                        >
-                            <SelectTrigger className="w-full sm:w-[180px] h-10 bg-white border border-slate-200 text-sm">
-                                <SelectValue placeholder="Todas las Unidades">
-                                    {filtros.unidad ? (unidades.find(u => u.ref === filtros.unidad)?.nombre || filtros.unidad) : 'Todas las Unidades'}
+                            <SelectTrigger className="w-full bg-slate-50/50 border-slate-200 text-sm h-9">
+                                <SelectValue placeholder="Todas las unidades">
+                                    {filtros.unidad && filtros.unidad !== " " ? (unidades.find(u => String(u.ref) === filtros.unidad)?.nombre || filtros.unidad) : "Todas las unidades"}
                                 </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
@@ -832,9 +947,9 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                                         className="h-8 text-xs bg-slate-50 focus-visible:ring-emerald-500"
                                     />
                                 </div>
-                                <SelectItem value="all">Todas las Unidades</SelectItem>
+                                <SelectItem value=" ">Todas las unidades</SelectItem>
                                 {unidadesFiltradasTable.map(u => (
-                                    <SelectItem key={u.ref} value={u.ref}>
+                                    <SelectItem key={u.ref} value={String(u.ref)}>
                                         {u.nombre}
                                     </SelectItem>
                                 ))}
@@ -846,224 +961,275 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                     </div>
                 </div>
 
-                <div className="text-xs text-slate-400 font-medium">
-                    {datosAMostrar.length} registros encontrados
-                </div>
-
                 {/* Tabla de Nodos */}
-                <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
-                    <Table>
-                        <TableHeader>
-                            <TableRow className="bg-slate-50 hover:bg-slate-50">
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">PUERTO / SWITCH</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">UBICACIÓN / UNIDAD</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">OBSERVACIONES</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider text-center">FALTANTES</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider">ESTATUS / ATENCIÓN</TableHead>
-                                <TableHead className="font-semibold text-slate-500 text-xs uppercase tracking-wider text-right pr-6">ACCIONES</TableHead>
+                <div className="overflow-auto flex-1 w-full min-h-0 border border-slate-200/80 rounded-xl bg-white shadow-xs">
+                    <Table className="relative">
+                        <TableHeader className="sticky top-0 z-10 bg-slate-50 shadow-[0_1px_2px_rgba(0,0,0,0.08)]">
+                            <TableRow>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Ubicación / Unidad</TableHead>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Área / IP Switch</TableHead>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Detalles de Cable</TableHead>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs">Estado</TableHead>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs text-center">Faltantes</TableHead>
+                                <TableHead className="font-semibold text-slate-700 uppercase tracking-wider text-xs text-center">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {datosAMostrar.map((nodoData, index) => {
-                                const isSelected = selectedRowId === nodoData.Id;
-                                const hasImages = nodoData.TieneImagenes;
-                                
-                                return (
-                                    <TableRow 
-                                        key={nodoData.Id}
-                                        onClick={() => setSelectedRowId(nodoData.Id)}
-                                        className={`cursor-pointer transition-colors border-b border-slate-100 ${
-                                            isSelected 
-                                                ? 'bg-emerald-50/40 hover:bg-emerald-50' 
-                                                : !hasImages 
-                                                    ? 'bg-red-50/20 hover:bg-red-50/40' 
-                                                    : 'hover:bg-slate-50/80'
-                                        }`}
-                                    >
-                                        <TableCell>
-                                            <div className="space-y-1">
-                                                <span className="inline-flex items-center px-2 py-0.5 text-xs font-mono font-medium bg-slate-100 text-slate-800 rounded border border-slate-200">
-                                                    P: {nodoData.Puerto}
-                                                </span>
-                                                <div className="text-xs text-slate-400 font-mono">
-                                                    IP: {nodoData.IpSwitch}
-                                                </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="space-y-0.5">
-                                                <div className="font-semibold text-slate-900 text-sm">{nodoData.Ubicacion}</div>
-                                                <div className="text-xs text-slate-500">{nodoData.Unidad}</div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="max-w-[220px] truncate text-slate-600 text-sm">
-                                            {nodoData.Observaciones || 'Sin observaciones'}
-                                        </TableCell>
-                                        <TableCell className="text-center font-medium text-slate-700 text-sm">
-                                            {nodoData.Nodos_faltantes || '0'}
-                                        </TableCell>
-                                        <TableCell>
-                                            <div className="flex flex-col gap-1.5 justify-center">
-                                                {nodoData.Atencion ? (
-                                                    <Badge 
-                                                        variant="destructive" 
-                                                        className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
-                                                        onClick={(e) => { e.stopPropagation(); handleAtencionClick(nodoData); }}
-                                                    >
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-red-600 mr-1.5 animate-pulse"></span>
-                                                        Req. Mantenimiento
-                                                    </Badge>
-                                                ) : nodoData.Atendido ? (
-                                                    <Badge 
-                                                        variant="outline" 
-                                                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
-                                                        onClick={(e) => { e.stopPropagation(); handleAtencionClick(nodoData); }}
-                                                    >
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>
-                                                        Manto. Resuelto
-                                                    </Badge>
-                                                ) : null}
-
-                                                {nodoData.OtraAtencion ? (
-                                                    <Badge 
-                                                        variant="destructive" 
-                                                        className="bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
-                                                        onClick={(e) => { e.stopPropagation(); handleOtherAtencionClick(nodoData); }}
-                                                    >
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-600 mr-1.5 animate-pulse"></span>
-                                                        Req. Otra Atención
-                                                    </Badge>
-                                                ) : nodoData.OtroAtendido ? (
-                                                    <Badge 
-                                                        variant="outline" 
-                                                        className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200 text-xs px-2.5 py-1 rounded-full font-medium cursor-pointer w-fit"
-                                                        onClick={(e) => { e.stopPropagation(); handleOtherAtencionClick(nodoData); }}
-                                                    >
-                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 mr-1.5"></span>
-                                                        Atención Resuelta
-                                                    </Badge>
-                                                ) : null}
-                                                
-                                                {!nodoData.Atencion && !nodoData.Atendido && !nodoData.OtraAtencion && !nodoData.OtroAtendido && (
-                                                    <Badge 
-                                                        variant="outline" 
-                                                        className="bg-slate-50 text-slate-600 border-slate-200 text-xs px-2.5 py-1 rounded-full font-medium w-fit"
-                                                    >
-                                                        Activo / Sin Reporte
-                                                    </Badge>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                        <TableCell className="text-right pr-6">
-                                            <div className="flex items-center justify-end gap-1.5">
-                                                <TooltipProvider>
-                                                    <Tooltip>
-                                                        <TooltipTrigger asChild>
-                                                            <Button 
-                                                                size="icon" 
-                                                                variant="ghost" 
-                                                                onClick={(e) => { e.stopPropagation(); handleDetailsClick(nodoData); }}
-                                                                className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                                                            >
-                                                                <i className="fas fa-eye text-sm"></i>
-                                                            </Button>
-                                                        </TooltipTrigger>
-                                                        <TooltipContent>Ver Detalles</TooltipContent>
-                                                    </Tooltip>
-                                                </TooltipProvider>
-
-                                                {user?.role === 'administrador' && (
-                                                    <>
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button 
-                                                                        size="icon" 
-                                                                        variant="ghost" 
-                                                                        onClick={(e) => { e.stopPropagation(); handleEditClick(nodoData); }}
-                                                                        className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors"
-                                                                    >
-                                                                        <i className="fas fa-edit text-sm"></i>
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>Editar Nodo</TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button 
-                                                                        size="icon" 
-                                                                        variant="ghost" 
-                                                                        onClick={(e) => { e.stopPropagation(); handleDeleteClick(nodoData); }}
-                                                                        className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
-                                                                    >
-                                                                        <i className="fas fa-trash text-sm"></i>
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>Eliminar Nodo</TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </TableCell>
-                                    </TableRow>
-                                );
-                            })}
-                            {!isLoading && datosAMostrar.length === 0 && (
+                            {(!isLoading && datosAMostrar.length === 0) ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} className="text-center py-8 text-slate-500">
-                                        No se encontraron nodos registrados que coincidan.
+                                    <TableCell colSpan={6} className="text-center py-8 text-slate-400">
+                                        No se encontraron nodos con los filtros actuales.
                                     </TableCell>
                                 </TableRow>
+                            ) : (
+                                datosAMostrar.slice(pageNode * rowsPerPageNode, (pageNode + 1) * rowsPerPageNode).map((nodoData, index) => {
+                                    const isSelected = selectedRowId === nodoData.Id;
+                                    const rowClass = `transition-colors ${
+                                        isSelected 
+                                            ? 'bg-blue-50/80 hover:bg-blue-100/60' 
+                                            : 'hover:bg-slate-50/80'
+                                    }`;
+
+                                    const firstCellBorderClass = isSelected
+                                        ? 'shadow-[inset_4px_0_0_0_#3b82f6]'
+                                        : (nodoData.TieneImagenes === 0 ? 'shadow-[inset_4px_0_0_0_#fb923c]' : '');
+
+                                    return (
+                                        <TableRow 
+                                            key={nodoData.Id || index}
+                                            className={rowClass}
+                                        >
+                                            {/* Ubicación / Unidad */}
+                                            <TableCell className={`py-3 ${firstCellBorderClass}`}>
+                                                <div className="font-semibold text-slate-900 flex items-center gap-2">
+                                                    {nodoData.Ubicacion}
+                                                    {nodoData.TieneImagenes === 0 && (
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <i className="fas fa-camera-slash text-orange-500 text-[10px] animate-pulse" title="Sin imágenes"></i>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Faltan fotografías de este nodo</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    )}
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-0.5">{nodoData.Unidad || 'Sin unidad'}</div>
+                                            </TableCell>
+
+                                            {/* Área / IP Switch */}
+                                            <TableCell className="py-3">
+                                                <div className="font-medium text-slate-700">{nodoData.Area || 'Sin área asignada'}</div>
+                                                <div className="text-xs font-mono text-slate-400 mt-0.5">{nodoData.IpSwitch || 'Sin IP'}</div>
+                                            </TableCell>
+
+                                            {/* Detalles de Cable */}
+                                            <TableCell className="py-3">
+                                                <div className={`font-medium text-[11px] rounded px-1.5 py-0.5 inline-block ${
+                                                    parseInt(nodoData.CategoriaCable) < 6
+                                                        ? 'bg-red-50 text-red-700 border border-red-200'
+                                                        : 'bg-slate-100/60 text-slate-700'
+                                                }`}>
+                                                    Categoría: {nodoData.CategoriaCable}
+                                                    {parseInt(nodoData.CategoriaCable) < 6 && <i className="fas fa-exclamation-circle ml-1 text-red-500"></i>}
+                                                </div>
+                                                <div className="text-[11px] text-slate-400 mt-0.5">
+                                                    Puerto: {nodoData.Puerto} • Longitud: {nodoData.Longitud}m • {nodoData.AnioInstalacion}
+                                                </div>
+                                            </TableCell>
+
+                                            {/* Estado */}
+                                            <TableCell className="py-3">
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                                                    nodoData.EstadoCable?.toLowerCase() === 'bueno' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    nodoData.EstadoCable?.toLowerCase() === 'regular' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                                    'bg-red-50 text-red-700 border-red-200'
+                                                }`}>
+                                                    {nodoData.EstadoCable}
+                                                </span>
+                                            </TableCell>
+
+                                            {/* Faltantes */}
+                                            <TableCell className="py-3 text-center">
+                                                <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold ${
+                                                    parseInt(nodoData.Nodos_faltantes) > 0
+                                                        ? 'bg-red-50 text-red-700 border border-red-200'
+                                                        : 'text-slate-400'
+                                                }`}>
+                                                    {parseInt(nodoData.Nodos_faltantes) > 0 && <i className="fas fa-exclamation-circle mr-1"></i>}
+                                                    {nodoData.Nodos_faltantes || '0'}
+                                                </span>
+                                            </TableCell>
+
+                                            {/* Acciones */}
+                                            <TableCell className="py-3 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    
+                                                    {/* Grupo 1: Acciones del Nodo (Ver, Editar, Eliminar) */}
+                                                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/60 p-1 rounded-lg shadow-2xs">
+                                                        {/* Ver detalles */}
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        onClick={() => handleDetailsClick(nodoData)}
+                                                                        className="h-7 w-7 rounded-md text-blue-600 hover:text-blue-700 hover:bg-blue-100 transition-colors"
+                                                                    >
+                                                                        <i className="fas fa-eye text-[13px]"></i>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Ver detalles completos</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+
+                                                        {user?.role === 'administrador' && (
+                                                            <>
+                                                                {/* Editar */}
+                                                                <TooltipProvider>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button 
+                                                                                size="icon" 
+                                                                                variant="ghost" 
+                                                                                onClick={(e) => { e.stopPropagation(); handleEditClick(nodoData); }}
+                                                                                className="h-7 w-7 rounded-md text-amber-600 hover:text-amber-700 hover:bg-amber-100 transition-colors"
+                                                                            >
+                                                                                <i className="fas fa-edit text-[13px]"></i>
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>Editar Nodo</TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+
+                                                                {/* Eliminar */}
+                                                                <TooltipProvider>
+                                                                    <Tooltip>
+                                                                        <TooltipTrigger asChild>
+                                                                            <Button 
+                                                                                size="icon" 
+                                                                                variant="ghost" 
+                                                                                onClick={(e) => { e.stopPropagation(); handleDeleteClick(nodoData); }}
+                                                                                className="h-7 w-7 rounded-md text-red-600 hover:text-red-700 hover:bg-red-100 transition-colors"
+                                                                            >
+                                                                                <i className="fas fa-trash text-[13px]"></i>
+                                                                            </Button>
+                                                                        </TooltipTrigger>
+                                                                        <TooltipContent>Eliminar Nodo</TooltipContent>
+                                                                    </Tooltip>
+                                                                </TooltipProvider>
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Grupo 2: Mantenimiento (Mantenimiento, Otra Atención) */}
+                                                    <div className="flex items-center gap-1 bg-slate-50 border border-slate-200/60 p-1 rounded-lg shadow-2xs">
+                                                        {/* Mantenimiento */}
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        onClick={() => handleAtencionClick(nodoData)}
+                                                                        className={`h-7 w-7 rounded-md transition-colors ${
+                                                                            nodoData.Atencion
+                                                                                ? 'text-red-600 hover:text-red-700 hover:bg-red-100'
+                                                                                : nodoData.Atendido
+                                                                                    ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100'
+                                                                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200'
+                                                                        }`}
+                                                                    >
+                                                                        <i className="fas fa-wrench text-[13px]"></i>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Mantenimiento: {nodoData.Atencion ? 'Pendiente' : nodoData.Atendido ? 'Resuelto' : 'Sin reporte'}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+
+                                                        {/* Otra atención */}
+                                                        <TooltipProvider>
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        size="icon"
+                                                                        variant="ghost"
+                                                                        onClick={() => handleOtherAtencionClick(nodoData)}
+                                                                        className={`h-7 w-7 rounded-md transition-colors ${
+                                                                            nodoData.OtraAtencion
+                                                                                ? 'text-amber-600 hover:text-amber-700 hover:bg-amber-100'
+                                                                                : nodoData.OtroAtendido
+                                                                                    ? 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100'
+                                                                                    : 'text-slate-400 hover:text-slate-600 hover:bg-slate-200'
+                                                                        }`}
+                                                                    >
+                                                                        <i className="fas fa-exclamation-triangle text-[13px]"></i>
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Otra Atención: {nodoData.OtraAtencion ? 'Pendiente' : nodoData.OtroAtendido ? 'Resuelta' : 'Sin reporte'}</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    </div>
+
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })
                             )}
                         </TableBody>
                     </Table>
                 </div>
 
-                {/* Paginación */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100">
-                    <div className="text-sm text-slate-500">
-                        Página {pageNode + 1} de {Math.max(1, Math.ceil(totalRegistros / rowsPerPageNode))}
+                {/* Paginación (Estilo NodosSustitucion) */}
+                <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-slate-200/80 w-full mt-auto">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                        <span>Registros por página:</span>
+                        <select
+                            className="border border-slate-200 rounded-lg p-1.5 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                            value={rowsPerPageNode}
+                            onChange={(e) => {
+                                setRowsPerPageNode(parseInt(e.target.value, 10));
+                                setPageNode(0);
+                            }}
+                        >
+                            <option value={5}>5</option>
+                            <option value={10}>10</option>
+                            <option value={25}>25</option>
+                            <option value={50}>50</option>
+                        </select>
                     </div>
-                    
-                    <div className="flex flex-wrap items-center gap-4">
-                        <div className="flex items-center space-x-2">
-                            <span className="text-sm text-slate-500">Nodos por página:</span>
-                            <select 
-                                className="border rounded p-1 text-sm bg-white border-slate-200 text-slate-800 focus:outline-none focus:ring-1 focus:ring-emerald-600"
-                                value={rowsPerPageNode}
-                                onChange={(e) => {
-                                    setRowsPerPageNode(parseInt(e.target.value, 10));
-                                    setPageNode(0);
-                                }}
-                            >
-                                {[5, 10, 25, 50].map(val => (
-                                    <option key={val} value={val}>{val}</option>
-                                ))}
-                            </select>
-                        </div>
-                        
-                        <div className="flex space-x-2">
-                            <Button 
-                                variant="outline" 
-                                size="sm"
+                    <div className="flex items-center gap-4 text-sm">
+                        <span className="text-slate-500 font-medium">
+                            {datosAMostrar.length === 0 ? 0 : pageNode * rowsPerPageNode + 1}–{Math.min((pageNode + 1) * rowsPerPageNode, datosAMostrar.length)} de {datosAMostrar.length}
+                        </span>
+                        <div className="flex gap-1">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setPageNode(p => Math.max(0, p - 1))}
                                 disabled={pageNode === 0}
-                                onClick={() => setPageNode(prev => prev - 1)}
-                                className="h-8 shadow-2xs border-slate-200"
+                                className="h-8 w-8 text-slate-600 disabled:opacity-50 border-slate-200"
                             >
-                                Anterior
+                                <i className="fas fa-chevron-left text-xs"></i>
                             </Button>
-                            <Button 
-                                variant="outline" 
-                                size="sm"
-                                disabled={(pageNode + 1) * rowsPerPageNode >= totalRegistros}
-                                onClick={() => setPageNode(prev => prev + 1)}
-                                className="h-8 shadow-2xs border-slate-200"
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                onClick={() => setPageNode(p => p + 1)}
+                                disabled={(pageNode + 1) * rowsPerPageNode >= datosAMostrar.length}
+                                className="h-8 w-8 text-slate-600 disabled:opacity-50 border-slate-200"
                             >
-                                Siguiente
+                                <i className="fas fa-chevron-right text-xs"></i>
                             </Button>
                         </div>
                     </div>
@@ -1143,6 +1309,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 handleImageClick={handleImageClick}
                 completeActionText="Ya no requiere atención"
                 historialLabel="Historial de otras atenciones"
+                historialType="otrasAtenciones"
             />
 
             <NodeAttentionModal 
@@ -1152,6 +1319,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                 handleImageClick={handleImageClick}
                 showActions={false}
                 historialLabel="Historial de otras atenciones"
+                historialType="otrasAtenciones"
             />
 
             {/* Observation Modals */}
@@ -1195,7 +1363,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                         setShowObservacionesModal(false);
                     } catch (error) {
                         console.error('Error al guardar los cambios:', error);
-                        alert('Error al guardar los cambios');
+                        toastError('Error al guardar los cambios');
                     }
                 }}
             />
@@ -1226,13 +1394,13 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                         await axios.put(endpoint, formData, {
                             headers: { 'Content-Type': 'multipart/form-data' },
                         });
-                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento' : 'Otra atención'} eliminada`);
+                        success(`${tipoAtencion === 'Atencion' ? 'Mantenimiento' : 'Otra atención'} eliminada`);
                         setNewImageFiles([]);
                         handleCloseModal();
                         fetchNewNodos();
                     } catch (error) {
                         console.error(`Error al eliminar ${tipoAtencion}:`, error);
-                        alert(`Error al eliminar ${tipoAtencion === 'Atencion' ? 'el mantenimiento' : 'otra atención'}`);
+                        toastError(`Error al eliminar ${tipoAtencion === 'Atencion' ? 'el mantenimiento' : 'otra atención'}`);
                     }
                 }}
             />
@@ -1270,13 +1438,13 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                         await axios.put(`${API_URL}/api/nodos/updateAtencion/${nodoReferencia.Id}`, formData, {
                             headers: { 'Content-Type': 'multipart/form-data' },
                         });
-                        alert(`${tipoAtencion === 'Atencion' ? 'Mantenimiento parcialmente solucionado' : 'Otra atención parcialmente solucionada'}`);
+                        success(`${tipoAtencion === 'Atencion' ? 'Mantenimiento parcialmente solucionado' : 'Otra atención parcialmente solucionada'}`);
                         setNewImageFiles([]);
                         fetchNewNodos();
                         handleCloseModal();
                     } catch (error) {
                         console.error(`Error al solventar parcialmente:`, error);
-                        alert(`Error al solventar parcialmente`);
+                        toastError(`Error al solventar parcialmente`);
                     }
                 }}
             />
