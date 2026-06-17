@@ -16,9 +16,26 @@ export const AuthProvider = ({ children }) => {
         const storedUser = localStorage.getItem('user');
 
         if (storedToken && storedUser) {
-            setUser(JSON.parse(storedUser));
-            // También se podría configurar axios para enviar el token por defecto
-            axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+            try {
+                // Decodificar el payload del JWT
+                const payloadBase64 = storedToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+                const decodedPayload = JSON.parse(atob(payloadBase64));
+                const isExpired = decodedPayload.exp * 1000 < Date.now();
+
+                if (isExpired) {
+                    // Token expirado, limpiar la sesión
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                } else {
+                    setUser(JSON.parse(storedUser));
+                    // También se podría configurar axios para enviar el token por defecto
+                    axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+                }
+            } catch (error) {
+                console.error("Error al validar el token", error);
+                localStorage.removeItem('user');
+                localStorage.removeItem('token');
+            }
         }
         setLoading(false);
     }, []);
@@ -59,7 +76,7 @@ export const AuthProvider = ({ children }) => {
                 if (logoutUserRef.current) {
                     logoutUserRef.current();
                 }
-            }, 15 * 60 * 1000); // 15 minutos de inactividad
+            }, 8 * 60 * 60 * 1000); // 8 horas de inactividad
         };
 
         if (user) {

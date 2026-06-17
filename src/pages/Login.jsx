@@ -85,7 +85,7 @@ const Login = () => {
                 <div className="absolute bottom-8 left-8 md:left-16 lg:left-24">
                     <div className="flex items-center gap-2 mb-1">
                         <Shield size={14} className="text-yellow-500" />
-                        <span className="text-yellow-500 text-xs font-semibold">Sistema de Nodos v2.4.1</span>
+                        <span className="text-yellow-500 text-xs font-semibold">Sistema de Nodos v2.0.1</span>
                     </div>
                     <p className="text-[10px] text-green-200/60 font-medium tracking-wide">
                         Bajo normativa MAAGTIC-SI - Ley Federal de Transparencia
@@ -96,7 +96,7 @@ const Login = () => {
             {/* Right Section - Login Form */}
             <div className="w-full md:w-[450px] lg:w-[550px] flex items-center justify-center p-6 z-10">
                 <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-[420px] p-8 md:p-10 relative overflow-hidden">
-                    <div className="mb-6">
+                    <div className="mb-6 flex justify-center">
                         <img src="/IMSS_Logosímbolo.png" alt="Logo IMSS" className="h-16 object-contain" />
                     </div>
 
