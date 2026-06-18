@@ -66,7 +66,8 @@ export default function GestionUnidades() {
                     limit: 1000
                 }
             });
-            setUnidades(response.data.unidades || []);
+            const data = response.data || {};
+            setUnidades(Array.isArray(data) ? data : (data.unidades || []));
         } catch (error) {
             console.error('Error al obtener el detalle de las unidades:', error);
         } finally {

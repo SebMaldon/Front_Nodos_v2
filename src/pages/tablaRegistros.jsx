@@ -387,16 +387,19 @@ const tablaRegistros = () => {
                 params: { ...params, page: 1, limit: 9999 },
             });
 
-            setFilteredNodos(response.data.nodos);
-            setTotalRegistros(response.data.total);
-            setTotalFaltantes(response.data.faltantes);
-            setTotalAtencion(response.data.totalAtencion);
-            setTotalOtraAtencion(response.data.totalOtraAtencion);
-            setTotalAtendidos(response.data.totalAtendido);
-            setTotalOtroAtendido(response.data.totalOtroAtendido);
-            setTotalSinImagenes(response.data.totalSinImagenes || 0);
-            setMateriales(response.data.materialesSuma);
-            setTotal_IDF_MDF(response.data.idf_mdf_Suma);
+            const data = response.data || {};
+            const nodos = Array.isArray(data) ? data : (data.nodos || []);
+
+            setFilteredNodos(nodos);
+            setTotalRegistros(data.total || nodos.length);
+            setTotalFaltantes(data.faltantes || 0);
+            setTotalAtencion(data.totalAtencion || 0);
+            setTotalOtraAtencion(data.totalOtraAtencion || 0);
+            setTotalAtendidos(data.totalAtendido || 0);
+            setTotalOtroAtendido(data.totalOtroAtendido || 0);
+            setTotalSinImagenes(data.totalSinImagenes || 0);
+            setMateriales(data.materialesSuma || []);
+            setTotal_IDF_MDF(data.idf_mdf_Suma || []);
         } catch (error) {
             console.error('Error al obtener los registros:', error);
         }

@@ -11,6 +11,47 @@ export const AuthProvider = ({ children }) => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
+        // Interceptor global para manejar bloqueos del proxy institucional/intranet
+        const interceptor = axios.interceptors.response.use(
+            (response) => {
+                // Si recibimos HTML (posible portal cautivo o proxy) en vez de JSON
+                const isHtml = typeof response.data === 'string' && response.data.trim().toLowerCase().startsWith('<html');
+                
+                if (isHtml) {
+                    const config = response.config;
+                    config.retryCount = config.retryCount || 0;
+                    
+                    if (config.retryCount < 2) {
+                        config.retryCount += 1;
+                        console.warn(`Posible intercepción de proxy detectada. Reintentando petición (${config.retryCount}/2)...`);
+                        // Esperar medio segundo y reintentar para dar tiempo al navegador de autenticar
+                        return new Promise((resolve) => {
+                            setTimeout(() => resolve(axios(config)), 500);
+                        });
+                    } else {
+                        // Si después de 2 reintentos sigue fallando, es mejor rechazar que pasar HTML al sistema
+                        return Promise.reject(new Error("Proxy o portal cautivo bloqueando permanentemente la conexión."));
+                    }
+                }
+                return response;
+            },
+            (error) => {
+                const config = error.config;
+                // Manejar cortes de red temporales generados por el proxy
+                if (config && config.retryCount === undefined) {
+                    config.retryCount = 0;
+                }
+                if (config && config.retryCount < 2 && (!error.response || error.message === 'Network Error')) {
+                    config.retryCount += 1;
+                    console.warn(`Error de red temporal. Reintentando petición (${config.retryCount}/2)...`);
+                    return new Promise((resolve) => {
+                        setTimeout(() => resolve(axios(config)), 500);
+                    });
+                }
+                return Promise.reject(error);
+            }
+        );
+
         // Cargar el token y los datos del usuario si existen en localStorage
         const storedToken = localStorage.getItem('token');
         const storedUser = localStorage.getItem('user');
@@ -38,6 +79,10 @@ export const AuthProvider = ({ children }) => {
             }
         }
         setLoading(false);
+
+        return () => {
+            axios.interceptors.response.eject(interceptor);
+        };
     }, []);
 
     const loginUser = (userData, token) => {
