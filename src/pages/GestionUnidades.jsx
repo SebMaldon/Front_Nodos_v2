@@ -13,7 +13,7 @@ import EditUnidadModal from '../components/EditUnidadModal';
 import UnidadDetailsModal from '../components/UnidadDetailsModal';
 import { useNotifications } from '../context/NotificationContext';
 
-const API_URL = 'http://localhost:5090';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export default function GestionUnidades() {
     const { user } = useContext(AuthContext);

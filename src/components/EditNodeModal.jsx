@@ -266,7 +266,7 @@ export default function EditNodeModal({ nodoToEdit, editFormData, unidades, hand
                                         {editFormData.images.map(img => (
                                             <div key={img.Id} className="relative group rounded-lg overflow-hidden border border-slate-200 shadow-2xs">
                                                 <img 
-                                                    src={`${import.meta.env.VITE_API_URL || 'http://localhost:5090'}${img.ImagenURL}`} 
+                                                    src={`${import.meta.env.VITE_API_URL}${img.ImagenURL}`} 
                                                     className="w-full h-24 object-cover cursor-pointer hover:scale-105 transition-transform duration-200" 
                                                     onClick={() => handleImageClick(img.ImagenURL)} 
                                                 />

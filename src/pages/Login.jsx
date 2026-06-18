@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { Shield, User, Lock, Eye, EyeOff, LogIn, CheckCircle2, Network, Wrench, Image as ImageIcon, Database } from 'lucide-react';
 
-const API_URL = 'http://localhost:5090';
+const API_URL = import.meta.env.VITE_API_URL;
 
 const Login = () => {
     const [usuario, setUsuario] = useState('');

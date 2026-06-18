@@ -12,7 +12,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 
-const API_URL = 'http://localhost:5090';
+const API_URL = import.meta.env.VITE_API_URL;
 
 export default function PantallaInicio() {
   const navigate = useNavigate();

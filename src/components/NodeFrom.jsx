@@ -12,7 +12,7 @@ import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 
-const API_URL = 'http://localhost:5090';
+const API_URL = import.meta.env.VITE_API_URL;
 
 
 const NodeFrom = ({ onAddNodo, onClose }) => {
