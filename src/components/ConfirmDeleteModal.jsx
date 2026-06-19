@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 export default function ConfirmDeleteModal({ nodoToDelete, onClose, onConfirm }) {
     return (
         <Dialog open={!!nodoToDelete} onOpenChange={(open) => !open && onClose()}>
-            <DialogContent className="sm:max-w-md">
+            <DialogContent className="sm:max-w-md bg-white p-6 rounded-xl border border-slate-200 shadow-lg">
                 <DialogHeader>
                     <DialogTitle className="text-red-600 flex items-center gap-2">
                         <i className="fas fa-exclamation-triangle"></i> Confirmar Eliminación
