@@ -14,22 +14,32 @@ export const AuthProvider = ({ children }) => {
         // Interceptor global para manejar bloqueos del proxy institucional/intranet
         const interceptor = axios.interceptors.response.use(
             (response) => {
-                // Si recibimos HTML (posible portal cautivo o proxy) en vez de JSON
-                const isHtml = typeof response.data === 'string' && response.data.trim().toLowerCase().startsWith('<html');
+                // Si recibimos HTML/XML (posible portal cautivo, proxy institucional o error de IIS) en vez de JSON
+                const isHtml = typeof response.data === 'string' && (
+                    response.data.trim().startsWith('<') ||
+                    response.data.toLowerCase().includes('<html') ||
+                    response.data.toLowerCase().includes('<body') ||
+                    response.data.toLowerCase().includes('<!doctype')
+                );
                 
                 if (isHtml) {
                     const config = response.config;
                     config.retryCount = config.retryCount || 0;
                     
-                    if (config.retryCount < 2) {
+                    if (config.retryCount < 3) {
                         config.retryCount += 1;
-                        console.warn(`Posible intercepción de proxy detectada. Reintentando petición (${config.retryCount}/2)...`);
-                        // Esperar medio segundo y reintentar para dar tiempo al navegador de autenticar
+                        console.warn(`Posible intercepción de proxy/portal detectada en ${config.url}. Reintentando petición (${config.retryCount}/3)...`);
                         return new Promise((resolve) => {
-                            setTimeout(() => resolve(axios(config)), 500);
+                            setTimeout(() => {
+                                const token = localStorage.getItem('token');
+                                if (token && config.headers) {
+                                    config.headers['Authorization'] = `Bearer ${token}`;
+                                }
+                                resolve(axios(config));
+                            }, 800);
                         });
                     } else {
-                        // Si después de 2 reintentos sigue fallando, es mejor rechazar que pasar HTML al sistema
+                        // Si después de 3 reintentos sigue fallando, es mejor rechazar que pasar HTML al sistema
                         return Promise.reject(new Error("Proxy o portal cautivo bloqueando permanentemente la conexión."));
                     }
                 }
@@ -37,15 +47,28 @@ export const AuthProvider = ({ children }) => {
             },
             (error) => {
                 const config = error.config;
-                // Manejar cortes de red temporales generados por el proxy
+                // Manejar cortes de red temporales o fallos de proxy (502, 503, 504)
                 if (config && config.retryCount === undefined) {
                     config.retryCount = 0;
                 }
-                if (config && config.retryCount < 2 && (!error.response || error.message === 'Network Error')) {
+                
+                const isNetworkOrProxyError = !error.response || 
+                    error.message === 'Network Error' || 
+                    error.code === 'ERR_NETWORK' || 
+                    error.code === 'ECONNABORTED' ||
+                    (error.response && [502, 503, 504].includes(error.response.status));
+
+                if (config && config.retryCount < 3 && isNetworkOrProxyError) {
                     config.retryCount += 1;
-                    console.warn(`Error de red temporal. Reintentando petición (${config.retryCount}/2)...`);
+                    console.warn(`Error temporal de red o proxy en ${config.url}. Reintentando petición (${config.retryCount}/3)...`);
                     return new Promise((resolve) => {
-                        setTimeout(() => resolve(axios(config)), 500);
+                        setTimeout(() => {
+                            const token = localStorage.getItem('token');
+                            if (token && config.headers) {
+                                config.headers['Authorization'] = `Bearer ${token}`;
+                            }
+                            resolve(axios(config));
+                        }, 800);
                     });
                 }
                 return Promise.reject(error);

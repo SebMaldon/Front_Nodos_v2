@@ -305,7 +305,7 @@ export default function PantallaInicio() {
                 </div>
             ) : chartData.length > 0 ? (
                 <div className="h-[380px]" style={{ minWidth: `${Math.max(100, chartData.length * 120)}px`, width: '100%' }}>
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={380}>
                         <BarChart
                             data={chartData}
                             margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
