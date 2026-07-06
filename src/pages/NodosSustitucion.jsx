@@ -635,6 +635,28 @@ const NodosSustitucion = () => {
         fetchNodos();
     }, [filtros, page, rowsPerPage]);
 
+    // Precargar imágenes en segundo plano para que al cambiar de página en las galerías sea instantáneo
+    useEffect(() => {
+        const preloadSlice = (images, currentPage, perPage) => {
+            if (!images || !Array.isArray(images) || images.length === 0) return;
+            const start = Math.max(0, (currentPage - 1) * perPage);
+            const end = Math.min(images.length, (currentPage + 3) * perPage);
+            images.slice(start, end).forEach(img => {
+                const url = img.ImagenURL ? `${API_URL}${img.ImagenURL}` : null;
+                if (url) {
+                    const preload = new Image();
+                    preload.src = url;
+                }
+            });
+        };
+        if (selectedImagesUnidadNodos?.nodosImages) {
+            preloadSlice(selectedImagesUnidadNodos.nodosImages, imgNodosPage, imgNodosPerPage);
+        }
+        if (selectedImagesUnidad?.MDF_IDF_Images) {
+            preloadSlice(selectedImagesUnidad.MDF_IDF_Images, imgMdfPage, imgMdfPerPage);
+        }
+    }, [selectedImagesUnidadNodos, imgNodosPage, imgNodosPerPage, selectedImagesUnidad, imgMdfPage, imgMdfPerPage]);
+
     const handleFiltroChange = (e) => {
         const { name, value } = e.target; // Extrae el nombre y el valor del campo
         setFiltros({ ...filtros, [name]: value }); // Actualiza el estado de los filtros
@@ -1490,7 +1512,7 @@ const NodosSustitucion = () => {
                                                 : 'Fecha no disponible';
 
                                             return (
-                                                <div key={index} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center">
+                                                <div key={`${image.ImagenURL || index}-${index}`} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center">
                                                     <span className="text-[10px] text-slate-400 font-medium mb-1">{formattedDate}</span>
                                                     <img
                                                         src={`${API_URL}${image.ImagenURL}`}
@@ -1591,7 +1613,7 @@ const NodosSustitucion = () => {
                                                 : 'Fecha no disponible';
 
                                             return (
-                                                <div key={index} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center">
+                                                <div key={`${image.ImagenURL || index}-${index}`} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center">
                                                     <span className="text-[10px] text-slate-400 font-medium mb-1">{formattedDate}</span>
                                                     <img
                                                         src={`${API_URL}${image.ImagenURL}`}
@@ -1647,7 +1669,7 @@ const NodosSustitucion = () => {
                                             const isSolventado = image.ImagenURL.toLowerCase().includes('solventado');
 
                                             return (
-                                                <div key={index} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center shadow-xs">
+                                                <div key={`${image.ImagenURL || index}-${index}`} className="border border-slate-200 rounded-lg p-2 bg-slate-50 flex flex-col items-center justify-between text-center shadow-xs">
                                                     <span className={`text-[10px] font-semibold mb-1 ${isSolventado ? 'text-green-600' : 'text-slate-500'}`}>
                                                         {isSolventado ? 'Solventado' : 'General'}
                                                     </span>
@@ -1768,7 +1790,7 @@ const NodosSustitucion = () => {
                                                 const isSolventado = image.ImagenURL.toLowerCase().includes('solventado');
 
                                                 return (
-                                                    <div key={index} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs [content-visibility:auto] contain-intrinsic-size-[200px]">
+                                                    <div key={`${image.ImagenURL || index}-${index}`} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs [content-visibility:auto] contain-intrinsic-size-[200px]">
                                                         <div className="mb-2">
                                                             <div className="font-semibold text-slate-800 text-xs truncate" title={image.Ubicacion}>{image.Ubicacion}</div>
                                                             <div className="text-[10px] text-slate-500 truncate" title={image.NombreUnidad}>{image.NombreUnidad || 'Sin Unidad'}</div>
@@ -1850,7 +1872,11 @@ const NodosSustitucion = () => {
                             <Button
                                 className="bg-green-700 hover:bg-green-800 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
                                 onClick={() => {
-                                    setMdfIdfFormData(prev => ({ ...prev, unidadForm: filtros.unidad, isNew: 'Nuevo' }));
+                                    const unidad = filtros.unidad || '';
+                                    setMdfIdfFormData(prev => ({ ...prev, unidadForm: unidad, isNew: 'Nuevo', codigoMDFIDF: '' }));
+                                    if (unidad) {
+                                        handleFormUnidadChange(unidad);
+                                    }
                                     setShowMdfIdfForm(true);
                                 }}
                             >
@@ -1885,7 +1911,7 @@ const NodosSustitucion = () => {
                                                     : 'Fecha no disponible';
 
                                                 return (
-                                                    <div key={index} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs [content-visibility:auto] contain-intrinsic-size-[200px]">
+                                                    <div key={`${image.ImagenURL || index}-${index}`} className="border border-slate-200 rounded-lg p-3 bg-slate-50 flex flex-col justify-between shadow-xs [content-visibility:auto] contain-intrinsic-size-[200px]">
                                                         <div className="mb-2">
                                                             <div className="font-semibold text-slate-800 text-xs truncate">Código: {image.CodigoMDFIDF}</div>
                                                             <span className="text-[10px] text-slate-400 font-medium block truncate">
@@ -2143,6 +2169,35 @@ const NodosSustitucion = () => {
                                 <span className="text-xs text-slate-400 font-medium mt-1 block">
                                     Unidad: {unidades.find(u => String(u.ref) === String(mdfIdfFormData.unidadForm))?.nombre || mdfIdfFormData.unidadForm}
                                 </span>
+
+                                {mdfIdfFormData.codigoMDFIDF && (
+                                    <div className="mt-2 bg-slate-50 p-3 rounded-lg border border-slate-100 text-center">
+                                        <span className="text-xs font-medium text-slate-400 block mb-2">Imágenes bajo el código seleccionado:</span>
+                                        <div className="flex flex-wrap gap-2 justify-center">
+                                            {fetchedUnitImages
+                                                .filter(img => img.CodigoMDFIDF === mdfIdfFormData.codigoMDFIDF)
+                                                .map(img => (
+                                                    <div key={img.Id} className="flex flex-col items-center">
+                                                        <img
+                                                            src={`${API_URL}${img.ImagenURL}?v=${imgVersion}`}
+                                                            alt={img.Nombre || 'Imagen'}
+                                                            className={`w-16 h-16 object-cover rounded border shadow-xs ${img.Id === mdfIdfFormData.id ? 'border-2 border-green-500 ring-2 ring-green-300' : 'border-slate-200'}`}
+                                                        />
+                                                        {img.Nombre && (
+                                                            <span className="text-[9px] text-slate-500 truncate max-w-[64px]">{img.Nombre}</span>
+                                                        )}
+                                                        {img.Id === mdfIdfFormData.id && (
+                                                            <span className="text-[8px] font-bold text-green-600 bg-green-50 px-1 rounded mt-0.5 border border-green-200">Editando</span>
+                                                        )}
+                                                    </div>
+                                                ))
+                                            }
+                                            {fetchedUnitImages.filter(img => img.CodigoMDFIDF === mdfIdfFormData.codigoMDFIDF).length === 0 && (
+                                                <span className="text-xs text-slate-400 italic">Sin imágenes en este código.</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
