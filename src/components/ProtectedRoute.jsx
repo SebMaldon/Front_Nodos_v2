@@ -15,7 +15,7 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     }
 
     // Verificamos si la ruta requiere un rol específico
-    if (requiredRole && user.role && user.role.toLowerCase() !== requiredRole.toLowerCase()) {
+    if (requiredRole && user.role && user.role.toLowerCase() !== 'maestro' && user.role.toLowerCase() !== requiredRole.toLowerCase()) {
         return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>
             <h2>Acceso Denegado</h2>
             <p>Se requieren permisos de {requiredRole} para ver esta página.</p>

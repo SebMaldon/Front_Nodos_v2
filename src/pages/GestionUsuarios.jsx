@@ -276,6 +276,18 @@ export default function GestionUsuarios() {
         </button>
         
         <button 
+          onClick={() => setRoleFilter(roleFilter === 'maestro' ? 'todos' : 'maestro')}
+          className={`bg-white rounded-xl border p-4 shadow-sm flex flex-col items-center justify-center transition-all hover:border-emerald-200 ${roleFilter === 'maestro' ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/10' : 'border-slate-200'}`}
+        >
+          <div className={`text-2xl font-semibold ${roleFilter === 'maestro' ? 'text-emerald-600' : 'text-slate-400'}`}>
+            {users.filter(u => u.role === 'maestro').length}
+          </div>
+          <div className={`text-[10px] font-bold uppercase tracking-widest mt-2 ${roleFilter === 'maestro' ? 'text-emerald-700' : 'text-slate-500'}`}>
+            Maestro
+          </div>
+        </button>
+
+        <button 
           onClick={() => setRoleFilter(roleFilter === 'usuario' ? 'todos' : 'usuario')}
           className={`bg-white rounded-xl border p-4 shadow-sm flex flex-col items-center justify-center transition-all hover:border-emerald-200 ${roleFilter === 'usuario' ? 'border-emerald-500 ring-1 ring-emerald-500 bg-emerald-50/10' : 'border-slate-200'}`}
         >
@@ -337,8 +349,8 @@ export default function GestionUsuarios() {
                   </div>
                 </TableCell>
                 <TableCell className="py-4">
-                  <Badge className="bg-amber-100/50 text-amber-700 hover:bg-amber-100/80 border-0 rounded-full font-semibold px-3">
-                    {u.role === 'administrador' ? 'Administrador' : 'Usuario'}
+                  <Badge className="bg-amber-100/50 text-amber-700 hover:bg-amber-100/80 border-0 rounded-full font-semibold px-3 capitalize">
+                    {u.role}
                   </Badge>
                 </TableCell>
                 <TableCell className="py-4 text-center">
@@ -545,6 +557,7 @@ export default function GestionUsuarios() {
                   onChange={e => setForm(f => ({ ...f, role: e.target.value }))}
                   className="w-full h-11 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400"
                 >
+                  <option value="maestro">Maestro</option>
                   <option value="administrador">Administrador</option>
                   <option value="usuario">Usuario</option>
                 </select>

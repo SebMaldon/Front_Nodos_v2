@@ -95,7 +95,7 @@ function App() {
                             <Route
                                 path="/gestion-usuarios"
                                 element={
-                                    <ProtectedRoute requiredRole="administrador">
+                                    <ProtectedRoute requiredRole="maestro">
                                         <AppLayout>
                                              <div className="w-full fade-in">
                                                  <GestionUsuarios />
