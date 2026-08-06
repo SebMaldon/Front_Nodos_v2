@@ -9,6 +9,8 @@ import Login from './pages/Login';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import GestionUnidades from './pages/GestionUnidades';
+import GestionUsuarios from './pages/GestionUsuarios';
+import Configuracion from './pages/Configuracion';
 
 import { AppProvider, useApp } from './context/AppContext';
 import { NotificationProvider } from './context/NotificationContext';
@@ -91,6 +93,18 @@ function App() {
                                 }
                             />
                             <Route
+                                path="/gestion-usuarios"
+                                element={
+                                    <ProtectedRoute requiredRole="administrador">
+                                        <AppLayout>
+                                             <div className="w-full fade-in">
+                                                 <GestionUsuarios />
+                                             </div>
+                                         </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
                                 path="/catalogo-prioritarios"
                                 element={
                                     <ProtectedRoute>
@@ -120,6 +134,18 @@ function App() {
                                     <ProtectedRoute>
                                         <AppLayout>
                                             <PantallaInicio />
+                                        </AppLayout>
+                                    </ProtectedRoute>
+                                }
+                            />
+                            <Route
+                                path="/configuracion"
+                                element={
+                                    <ProtectedRoute>
+                                        <AppLayout>
+                                            <div className="w-full fade-in">
+                                                <Configuracion />
+                                            </div>
                                         </AppLayout>
                                     </ProtectedRoute>
                                 }

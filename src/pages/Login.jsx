@@ -27,8 +27,8 @@ const Login = () => {
             });
 
             // Si es exitoso, guardar datos y redirigir
-            const { token, usuario: user, role, zona } = response.data;
-            loginUser({ usuario: user, role, zona: zona ?? null }, token);
+            const { token, id, usuario: user, role, zona } = response.data;
+            loginUser({ id, usuario: user, role, zona: zona ?? null }, token);
             navigate('/'); // Redirigir a inicio u otra página
 
         } catch (err) {

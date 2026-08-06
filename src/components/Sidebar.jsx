@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { AuthContext } from '../context/AuthContext';
 import {
-  LayoutDashboard, List, Settings, AlertTriangle, LogOut, ChevronRight, X, ClipboardList, Building2
+  LayoutDashboard, List, Settings, AlertTriangle, LogOut, ChevronRight, X, ClipboardList, Building2, UserCog
 } from 'lucide-react';
 
 const NAV_ITEMS = {
@@ -12,12 +12,15 @@ const NAV_ITEMS = {
     { path: '/catalogo-nodos', label: 'Catálogo de Nodos', icon: List, group: 'Gestión' },
     { path: '/gestion-nodos', label: 'Gestión y Registro', icon: Settings, group: 'Gestión' },
     { path: '/gestion-unidades', label: 'Gestión de Unidades', icon: Building2, group: 'Gestión' },
+    { path: '/gestion-usuarios', label: 'Gestión de Usuarios', icon: UserCog, group: 'Gestión' },
     { path: '/catalogo-prioritarios', label: 'Nodos Prioritarios', icon: AlertTriangle, group: 'Alertas' },
+    { path: '/configuracion', label: 'Configuración', icon: Settings, group: 'Ajustes' },
   ],
   user: [
     { path: '/', label: 'Inicio', icon: LayoutDashboard, group: 'Principal' },
     { path: '/catalogo-nodos', label: 'Catálogo de Nodos', icon: List, group: 'Consulta' },
     { path: '/catalogo-prioritarios', label: 'Nodos Prioritarios', icon: AlertTriangle, group: 'Alertas' },
+    { path: '/configuracion', label: 'Configuración', icon: Settings, group: 'Ajustes' },
   ]
 };
 

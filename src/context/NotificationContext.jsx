@@ -170,9 +170,8 @@ export function NotificationProvider({ children }) {
       {/* Global Custom Confirm Modal */}
       {confirmState.isOpen && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-          {/* Backdrop */}
           <div 
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 ease-out"
+            className="fixed inset-0 bg-slate-900/60 transition-opacity duration-300 ease-out"
             onClick={handleCancelAction}
           />
           
