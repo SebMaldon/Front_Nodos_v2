@@ -116,9 +116,11 @@ const Login = () => {
                                 <User className="absolute left-4 text-slate-400 group-focus-within:text-[#075940] transition-colors" size={18} />
                                 <input
                                     type="text"
+                                    inputMode="numeric"
                                     value={id}
-                                    onChange={(e) => setId(e.target.value)}
-                                    placeholder="Ej. ABC12345"
+                                    onChange={(e) => setId(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="Ej. 1234567"
+                                    pattern="[0-9]+"
                                     className="w-full bg-slate-50/50 border border-slate-200 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-[#075940]/20 focus:border-[#075940] block p-3.5 pl-11 transition-all outline-none placeholder:text-slate-400 font-medium"
                                     required
                                 />

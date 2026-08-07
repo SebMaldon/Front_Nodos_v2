@@ -91,9 +91,15 @@ export const AuthProvider = ({ children }) => {
                     localStorage.removeItem('user');
                     localStorage.removeItem('token');
                 } else {
-                    setUser(JSON.parse(storedUser));
-                    // También se podría configurar axios para enviar el token por defecto
-                    axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+                    const parsedUser = JSON.parse(storedUser);
+                    // Si la sesión guardada no tiene id (sesión previa al cambio de autenticación), forzar re-login
+                    if (!parsedUser.id) {
+                        localStorage.removeItem('user');
+                        localStorage.removeItem('token');
+                    } else {
+                        setUser(parsedUser);
+                        axios.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
+                    }
                 }
             } catch (error) {
                 console.error("Error al validar el token", error);
