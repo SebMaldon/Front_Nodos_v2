@@ -7,7 +7,7 @@ import { Shield, User, Lock, Eye, EyeOff, LogIn, CheckCircle2, Network, Wrench, 
 const API_URL = import.meta.env.VITE_API_URL;
 
 const Login = () => {
-    const [usuario, setUsuario] = useState('');
+    const [id, setId] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
@@ -22,13 +22,13 @@ const Login = () => {
 
         try {
             const response = await axios.post(`${API_URL}/api/auth/login`, {
-                usuario,
+                id,
                 password
             });
 
             // Si es exitoso, guardar datos y redirigir
-            const { token, id, usuario: user, role, zona } = response.data;
-            loginUser({ id, usuario: user, role, zona: zona ?? null }, token);
+            const { token, id: userId, usuario: user, role, zona } = response.data;
+            loginUser({ id: userId, usuario: user, role, zona: zona ?? null }, token);
             navigate('/'); // Redirigir a inicio u otra página
 
         } catch (err) {
@@ -116,8 +116,8 @@ const Login = () => {
                                 <User className="absolute left-4 text-slate-400 group-focus-within:text-[#075940] transition-colors" size={18} />
                                 <input
                                     type="text"
-                                    value={usuario}
-                                    onChange={(e) => setUsuario(e.target.value)}
+                                    value={id}
+                                    onChange={(e) => setId(e.target.value)}
                                     placeholder="Ej. ABC12345"
                                     className="w-full bg-slate-50/50 border border-slate-200 text-slate-800 text-sm rounded-xl focus:ring-2 focus:ring-[#075940]/20 focus:border-[#075940] block p-3.5 pl-11 transition-all outline-none placeholder:text-slate-400 font-medium"
                                     required
