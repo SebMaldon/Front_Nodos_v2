@@ -4,8 +4,10 @@ import { AuthContext } from '../context/AuthContext';
 import { User, Shield, Menu } from 'lucide-react';
 
 const ROL_CONFIG = {
-  administrador: { label: 'Administrador', sublabel: 'Gestión de Nodos', icon: Shield,  color: '#006341', bg: '#dcfce7' },
-  user:          { label: 'Usuario',       sublabel: 'Consulta',         icon: User,    color: '#2563eb', bg: '#dbeafe' },
+  administrador: { label: 'Administrador', sublabel: 'Gestión de Nodos', icon: Shield, color: '#006341', bg: '#dcfce7' },
+  maestro:       { label: 'Maestro',       sublabel: 'Gestión de Nodos', icon: Shield, color: '#006341', bg: '#dcfce7' },
+  user:          { label: 'Usuario',       sublabel: 'Consulta',         icon: User,   color: '#2563eb', bg: '#dbeafe' },
+  usuario:       { label: 'Usuario',       sublabel: 'Consulta',         icon: User,   color: '#2563eb', bg: '#dbeafe' },
 };
 
 export default function Topbar() {

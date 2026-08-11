@@ -21,6 +21,7 @@ const NAV_ITEMS = {
     { path: '/catalogo-nodos', label: 'Catálogo de Nodos', icon: List, group: 'Gestión' },
     { path: '/gestion-nodos', label: 'Gestión y Registro', icon: Settings, group: 'Gestión' },
     { path: '/gestion-unidades', label: 'Gestión de Unidades', icon: Building2, group: 'Gestión' },
+    { path: '/gestion-usuarios', label: 'Gestión de Usuarios', icon: UserCog, group: 'Gestión' },
     { path: '/catalogo-prioritarios', label: 'Nodos Prioritarios', icon: AlertTriangle, group: 'Alertas' },
     { path: '/configuracion', label: 'Configuración', icon: Settings, group: 'Ajustes' },
   ],
@@ -41,7 +42,7 @@ export default function Sidebar() {
   const role = user?.role || 'user';
   const navItems = NAV_ITEMS[role] || NAV_ITEMS.user;
   
-  const ROL_LABELS = { administrador: 'Administrador', user: 'Usuario' };
+  const ROL_LABELS = { administrador: 'Administrador', maestro: 'Maestro', user: 'Usuario', usuario: 'Usuario' };
   const rolLabel = ROL_LABELS[role] || 'Usuario';
 
   const grouped = navItems.reduce((acc, item) => {

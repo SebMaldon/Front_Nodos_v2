@@ -2176,7 +2176,7 @@ const tablaRegistros = () => {
                             <i className="fas fa-images text-green-700"></i>
                             Imágenes de MDF e IDF
                         </DialogTitle>
-                        {user?.role === 'administrador' && (
+                        {['administrador', 'maestro'].includes(user?.role) && (
                             <Button
                                 className="bg-green-700 hover:bg-green-800 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
                                 onClick={() => {
@@ -2258,7 +2258,7 @@ const tablaRegistros = () => {
                                                             </div>
 
                                                             <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-auto">
-                                                                {user?.role === 'administrador' && (
+                                                                {['administrador', 'maestro'].includes(user?.role) && (
                                                                     <>
                                                                         <Button
                                                                             variant="ghost"
@@ -2434,7 +2434,7 @@ const tablaRegistros = () => {
                                 >
                                     Abrir en pestaña nueva
                                 </a>
-                                {typeof selectedImage === 'object' && selectedImage.isMdfIdf && user?.role === 'administrador' && (
+                                {typeof selectedImage === 'object' && selectedImage.isMdfIdf && ['administrador', 'maestro'].includes(user?.role) && (
                                     <div className="flex gap-2 pt-2">
                                         <Button
                                             className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-medium shadow-xs"
@@ -2452,7 +2452,7 @@ const tablaRegistros = () => {
                                         </Button>
                                     </div>
                                 )}
-                                {typeof selectedImage === 'object' && selectedImage.isDiagrama && user?.role === 'administrador' && (
+                                {typeof selectedImage === 'object' && selectedImage.isDiagrama && ['administrador', 'maestro'].includes(user?.role) && (
                                     <div className="flex gap-2 pt-2">
                                         <Button
                                             className="bg-amber-600 hover:bg-amber-700 text-white gap-2 font-medium shadow-xs"
@@ -2678,7 +2678,7 @@ const tablaRegistros = () => {
                             <i className="fas fa-project-diagram text-purple-600"></i>
                             Galería Diagramas de Red
                         </DialogTitle>
-                        {user?.role === 'administrador' && (
+                        {['administrador', 'maestro'].includes(user?.role) && (
                             <Button
                                 onClick={() => handleUploadClickDiagrama()}
                                 className="bg-purple-600 hover:bg-purple-700 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
@@ -2737,7 +2737,7 @@ const tablaRegistros = () => {
                                                             </div>
 
                                                             <div className="flex justify-between items-center pt-3 border-t border-slate-100 mt-auto">
-                                                                {user?.role === 'administrador' && (
+                                                                {['administrador', 'maestro'].includes(user?.role) && (
                                                                     <>
                                                                         <Button
                                                                             variant="ghost"

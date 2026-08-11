@@ -1868,7 +1868,7 @@ const NodosSustitucion = () => {
                             <i className="fas fa-images text-green-700"></i>
                             Imágenes de MDF e IDF
                         </DialogTitle>
-                        {user?.role === 'administrador' && (
+                        {['administrador', 'maestro'].includes(user?.role) && (
                             <Button
                                 className="bg-green-700 hover:bg-green-800 text-white font-medium gap-2 h-9 px-3 text-xs mr-6"
                                 onClick={() => {
@@ -2013,7 +2013,7 @@ const NodosSustitucion = () => {
                                 >
                                     Abrir en pestaña nueva
                                 </a>
-                                {typeof selectedImage === 'object' && selectedImage.isMdfIdf && user?.role === 'administrador' && (
+                                {typeof selectedImage === 'object' && selectedImage.isMdfIdf && ['administrador', 'maestro'].includes(user?.role) && (
                                     <div className="flex gap-2 pt-2">
                                         <Button
                                             className="bg-amber-600 hover:bg-amber-700 text-white gap-2"

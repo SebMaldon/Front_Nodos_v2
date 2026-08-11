@@ -198,7 +198,7 @@ export default function PantallaInicio() {
   const userLabel = esAdminGlobal
     ? 'Administrador — Todas las zonas'
     : `Zona ${user.zona} — ${user.nombre_unidad || user.usuario || 'Delegación'}`;
-  const isAdmin = user?.role === 'administrador';
+  const isAdmin = user?.role === 'administrador' || user?.role === 'maestro';
 
 
   return (

@@ -749,7 +749,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                         </Tooltip>
                     </TooltipProvider>
 
-                    {user?.role === 'administrador' && (
+                    {['administrador', 'maestro'].includes(user?.role) && (
                         <Button 
                             onClick={() => setShowRegisterModal(true)}
                             className="h-10 bg-[#005E3A] hover:bg-[#004d30] text-white font-medium rounded-lg px-4 flex items-center gap-2 shadow-xs transition-colors"
@@ -1088,7 +1088,7 @@ const NodeTable = ({ refreshKey }) => { // Recibe la key para forzar el re-fetch
                                                             </Tooltip>
                                                         </TooltipProvider>
 
-                                                        {user?.role === 'administrador' && (
+                                                        {['administrador', 'maestro'].includes(user?.role) && (
                                                             <>
                                                                 {/* Editar */}
                                                                 <TooltipProvider>
